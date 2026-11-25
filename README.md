@@ -1,178 +1,96 @@
-<div align="center">
-
 # VibeMate
 
-**哪台设备的哪个 AI 编码任务停了，它会一直告诉你——点一下就回到那个窗口。**
+在 Windows 桌面上查看本机、WSL 和远程 Linux 上的 AI 编码任务。Agent 跑测试时，悬浮胶囊显示还有几个任务在跑；轮到你确认、查看结果或处理故障时，它会显示设备名和任务标题。
 
-多设备 AI 编码任务悬浮提醒窗 · 汇总 Windows 本机、WSL 与 SSH Linux / 树莓派上的 **Codex CLI**、**GitHub Copilot CLI**、**Claude Code** 与 **Antigravity** 会话。
+[快速预览](#快速预览) · [运行桌面版](#运行桌面版) · [任务列表](#任务列表) · [开发与构建](#开发与构建)
 
-[![Agents](https://img.shields.io/badge/Agents-Codex%20CLI%20%7C%20Copilot%20CLI-2c7c65?style=flat-square)](#支持的环境与-agent)
-[![Platform](https://img.shields.io/badge/Desktop-Windows%20x64%20%2F%20ARM64-0078D6?style=flat-square)](#安装与使用)
-[![Remote](https://img.shields.io/badge/Remote-WSL%20%7C%20SSH%20Linux%20%7C%20Raspberry%20Pi-475569?style=flat-square)](#接入-linux--树莓派设备)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Node.js%2022%2B-3178C6?style=flat-square)](#从源码开发与打包)
+![VibeMate 悬浮胶囊和展开的任务列表：树莓派上的修复已完成，WSL 正在运行测试，本机有一条可继续的历史对话。](docs/images/task-monitor.png)
 
-</div>
+*桌面端实际界面，使用模拟任务演示。*
 
----
+## 快速预览
 
-## 为什么做 VibeMate
+装有 Node.js 22+ 和 Git 的电脑可以直接运行浏览器演示。以下命令只启动预览服务，无需安装 npm 依赖或连接设备。
 
-当你给 Agent 放开权限、同时在 Windows 本机、WSL、实验室 Linux 和树莓派上并行跑好几个编码任务时，真正的痛点不是“每步点确认”，而是：
-
-> **Agent 停下来了，但你完全不知道——也不知道停在哪台设备的哪个终端里。**
-
-VibeMate 把所有设备上的编码任务收敛成一枚轻量、不打扰的悬浮胶囊，只回答三件事：
-
-1. **要不要我管？** —— 胶囊上有**设备名**，就是那台设备有事找你；只有**数字**，就是都在安心跑，不用管。
-2. **发生了什么？** —— 一眼看到任务标题、停下时的最后一句话或具体故障原因，而不是一串内部状态码。
-3. **去哪管？** —— 点击任务卡片，直接切回对应的 VS Code 窗口。
-
----
-
-## 核心特性
-
-### 1. 两态心智模型：**在跑** vs **轮到你**
-
-| 用户态 | 界面表现 | 含义 |
-| --- | --- | --- |
-| **在跑** | 常驻模式 `◌ N 个在跑` / 安静模式静止小圆点 | Agent 正在工作，你什么都不用做 |
-| **轮到你 · 完成** 🟢 | 胶囊持续挂起：`设备 · 任务标题  完成了  +N` | 当前轮次正常结束，附带 Agent 最后一句话 |
-| **轮到你 · 故障** 🔴 | 优先置顶挂起，带具体错误摘要 | 仅报四类明确故障，绝不胡乱误报 |
-| **轮到你 · 等确认** 🟡 | 边缘化保留 | 少数等待人工授权的场景 |
-
-### 2. 零误报原则：故障只认四种
-
-不做“N 分钟没动静就算卡住”——跑全量测试、编译或长思考时不会误报，只报告四类可明确判定的故障：
-
-- **模型请求失败**：接口返回 400 / 报错导致任务中断（并对瞬时网络重试自动防抖）。
-- **模型请求超时**：**仅在“等待模型返回”阶段计时**（默认 6 分钟），本地执行慢命令期间完全不计时。
-- **进程没了**：同机 Receiver 定时检查 Agent 真实进程存活，进程崩溃或终端被关数秒内上报。
-- **设备掉线**：远程连接断开满 **90 秒**才报，短暂网络抖动重连不打扰。
-
-### 3. 两种不打扰模式
-
-| 模式 | 任务都在跑时 | 有任务停下或出故障时 |
-| --- | --- | --- |
-| **常驻模式**（默认） | 显示 `◌ N 个在跑` | 完整胶囊常驻挂起，直到你处理 |
-| **安静模式** | 缩成**静止的**半透明小圆点（无动画），悬停显示数量 | 立即弹回完整胶囊，完成一个弹一次 |
-
-### 4. 一键回到对应窗口
-
-鼠标悬停任务行显示 **回去 ↗**，点击可切回 VS Code 窗口，终端标签保持原样。跳转成功后任务会标记为“已看”，重启后仍然有效；跳转失败时会显示原因，保留未读提醒。
-
-- **Windows 本机**：仅有一个 VS Code 窗口时直接激活；多个窗口时按默认窗口标题匹配项目名。匹配不到或有重名时提示手动切换。
-- **WSL**：`code --remote wsl+<发行版> <路径>`
-- **SSH Linux / 树莓派**：`code --remote ssh-remote+<主机别名> <路径>`
-
-### 5. 安全与隐私边界
-
-- **权限处理**：Codex 与 Copilot 的授权请求均在原终端处理。
-- **最小化采集与脱敏**：不采集完整提示词、对话转录、文件内容或命令输出；仅采集经控制字符清理、密钥脱敏与严格限长的任务标题（≤60 字）与停下/错误摘要（≤120 字）。
-- **SSH 凭证不落盘**：通过界面添加远程设备时使用内置 SSH 客户端，密码与密钥口令仅保存在当次运行内存中，不写入配置文件；首次连接强制核对主机指纹。
-
-> **彩蛋**：内置桌宠作为隐藏彩蛋保留，不承担任何必需提醒职责；在设置页连续点击标题 5 次解锁。
-
----
-
-## 支持的环境与 Agent
-
-| 维度 | 支持范围 |
-| --- | --- |
-| **桌面端** | Windows 10 / 11（`x64`、`arm64`） |
-| **被监控环境** | Windows 本机、WSL 发行版、独立 Linux / 树莓派（SSH，支持 `x64` 与 `arm64`） |
-| **编码 Agent** | **Codex CLI**、**GitHub Copilot CLI**、**Claude Code**、**Antigravity** |
-
----
-
-Claude Code 通过用户设置中的生命周期 Hook 接入；Antigravity App、CLI 和 IDE 使用全局 `~/.gemini/config/hooks.json`。需要支持这些 Hook 的版本。开启环境监控后重新打开 Agent 会话即可。
-
-## 安装与使用
-
-### 免安装压缩包（推荐）
-
-无需在 Windows 本机或远程设备上预先安装 Node.js：
-
-1. 从 [GitHub Releases](https://github.com/ericy9/vibemate/releases) 下载 `VibeMate-<version>-windows-<arch>.zip`，普通 Intel / AMD 电脑选择 `x64`，Windows ARM 设备选择 `arm64`。
-2. 将压缩包完整解压到固定目录，双击其中的 `VibeMate.exe`；请保留同目录下的全部文件，不要在压缩包内直接运行。
-3. 首次启动后，点击扫描 Windows 本机与 WSL，勾选需要监控的环境并确认授权。
-4. 重启正在运行中的 对应 Agent 的会话，让新注册的 Hook 生效。
-
-免安装版仍会在用户目录保存设置，并在你授权后注册 Agent Hook。升级时先退出 VibeMate，再将新版本完整解压到原目录。
-
-### 接入 Linux / 树莓派设备
-
-1. 在设置页点击 **添加设备**，填写设备名称、主机地址、SSH 端口与用户名（也可直接从已有 `~/.ssh/config` 别名扫描添加）。
-2. 选择密码登录或私钥文件登录，点击 **测试连接** 并核对首次连接的主机指纹（测试为只读探针，不会修改远端文件）。
-3. 点击 **安装并开始监控**，客户端会自动部署自带 Node 运行时、Receiver 与 Agent Hook。
-4. 重启远端设备上的 对应 Agent 的会话即可在桌面悬浮窗看到实时任务。
-
----
-
-## 架构概览
-
-```text
-Windows / WSL / SSH Linux / 树莓派
-  Codex CLI / Copilot CLI / Claude Code / Antigravity
-        │  (原生生命周期 Hook)
-        ▼
-  hook-runner ──► loopback Receiver (127.0.0.1)
-                       │  • 归一化事件 & 标题/摘要脱敏
-                       │  • 进程存活 & 等模型超时监测
-                       ▼  (WebSocket + Bearer Token / SSH 隧道)
-                VibeMate Desktop (Electron)
-                  ├── 悬浮提醒胶囊（常驻 / 安静模式）
-                  ├── 系统通知（含 90s 设备掉线宽限）
-                  ├── 一键聚焦 VS Code 窗口
-                  └── 设置页（环境管理与偏好）
+```sh
+git clone https://github.com/underdmpd/vibemate.git
+cd vibemate
+node browser-preview/monitor-server.mjs
 ```
 
-### 仓库结构
+打开 [本地悬浮窗演示](http://127.0.0.1:18883/floating)，点「本机任务完成」，再点胶囊展开列表。浏览器使用模拟数据；真实窗口跳转和会话恢复需要 Windows 桌面版。
 
-| 路径 | 职责 |
-| --- | --- |
-| `apps/desktop` | Electron 桌面主进程、悬浮提醒窗、设置页、系统通知、一键回去与 SSH/WSL 管理 |
-| `packages/protocol` | 统一事件协议 Schema、常量、字节上限与文本脱敏清理 |
-| `packages/core` | 会话状态机（`SessionStore`）、模型等待超时与进程健康检查、权限代理（`PermissionBroker`） |
-| `packages/adapter-codex` | Codex CLI Hook 事件归一化适配 |
-| `packages/adapter-copilot` | GitHub Copilot CLI Hook 事件归一化适配 |
-| `packages/hook-runner` | Agent Hook 本地入口（跳过短命 shell 抓真实 PID、Copilot 转录尾部抽最后一句） |
-| `packages/hook-installer` | Codex / Copilot Hook 幂等安装、备份与卸载 |
-| `packages/receiver` | 同机回环 HTTP + LAN WebSocket 接收端服务 |
-| `browser-preview` | 无需 Electron 与真实设备的浏览器交互预览 |
+## 运行桌面版
 
----
+**从源码启动** · 在 Windows 上安装 Node.js 22+ 和 Git，进入仓库目录后运行：
 
-## 从源码开发与打包
-
-环境要求：**Node.js 22+**、npm。
-
-```bash
-# 安装依赖
-npm install
-
-# 类型检查与单元测试
-npm run typecheck
-npm test
-
-# 浏览器预览悬浮窗效果（使用模拟数据，无需连接真实设备）
-node browser-preview/monitor-server.mjs
-# 打开 http://127.0.0.1:18883/floating
-
-# 源码运行桌面端（接入 WSL / 远端 Linux 前先构建 linux-payload）
+```sh
+npm ci
 npm run build:linux-payload
 npm run start:desktop
+```
 
-# 构建 Windows 免安装 ZIP（x64 + arm64，输出到 release/）
+**使用便携 ZIP** · 如果你已有发布包，Intel / AMD 电脑选 `x64`，Windows on Arm 电脑选 `arm64`。将 ZIP 完整解压到固定目录，双击 `VibeMate.exe`。便携版自带运行所需的文件；升级前先退出旧版。[查看 GitHub Releases](https://github.com/underdmpd/vibemate/releases)
+
+### 连接第一台设备
+
+1. 打开「设置」，点「扫描本机与 WSL」，启用要监控的环境。
+2. 重新打开该环境里的 Agent 会话，发起一个任务。VibeMate 收到第一个生命周期 Hook 后，任务就会出现在悬浮窗里。
+3. 接入 Linux 或树莓派时，点「添加设备」，填写 SSH 连接信息并测试连接。首次连接核对主机指纹，再点「安装并开始监控」，然后重新打开远端 Agent 会话。
+
+![环境设置页，展示 Windows 本机、通过 SSH 连接的树莓派、WSL Ubuntu，以及系统通知和悬浮窗模式。](docs/images/settings.png)
+
+*示例中的三套环境分别管理。常驻模式显示运行数量，安静模式在任务运行时缩成小圆点，有提醒时再展开。*
+
+## 任务列表
+
+| 你看到的状态 | 可以做什么 |
+| --- | --- |
+| **在跑** | 查看任务所在设备、项目和运行时长。 |
+| **轮到你** | 查看本轮结果、待确认事项或错误摘要。点「回到任务」切回工作窗口；点「知道了」只把这次提醒标为已看，权限请求仍需处理。 |
+| **最近任务** | 找回看过的任务和已结束的会话。当没有活跃任务时，面板默认显示最近三条，点「查看全部」可展开其余记录。 |
+
+**「完成了」表示这一轮已有结果；「会话已结束」表示 Agent 会话已经收尾。** 已结束的本机 Codex CLI 和 Copilot CLI 会话可以点「在 Windows Terminal 继续」，在原项目目录用原会话 ID 恢复对话。原账号下需要仍有对应的历史记录。
+
+### 支持哪些环境
+
+桌面端支持 Windows 10 / 11 的 x64、ARM64。可监控的 Agent 包括 **Codex CLI、GitHub Copilot CLI、Claude Code 和 Antigravity**，需要使用支持相应 Hook 的版本。
+
+| 任务运行位置 | 从面板返回任务 |
+| --- | --- |
+| Windows 本机 · VS Code | 激活已有窗口。有多个窗口时按项目名匹配；匹配不唯一时提示手动切换。 |
+| Windows 本机 · 独立 Windows Terminal | 确认原窗口后显示「打开终端窗口」。窗口内的标签页由用户选择。 |
+| WSL | 通过 VS Code 的 WSL 远程入口打开对应发行版和项目目录。 |
+| SSH Linux / 树莓派 | 通过 VS Code 的 Remote SSH 入口打开远端项目，支持 x64 和 ARM64 设备。 |
+
+### 提醒与隐私
+
+- **模型请求失败或超时**：可重试的请求错误经过连续失败判定后再提醒。默认只在等待模型返回时计算 6 分钟超时，编译或测试耗时本身不会触发该提醒。
+- **进程退出或设备掉线**：接收端在有可验证的 Agent 进程 ID 时检查进程存活。设备持续掉线 90 秒后才提醒。
+- **任务内容**：面板使用限长、脱敏的任务标题和结果摘要，分别最多 60 和 120 个字符。Copilot 的结果摘要可从本机转录末尾提取。
+- **远程连接**：首次连接需核对 SSH 主机指纹。密码和私钥口令仅保存在本次运行的内存中。
+
+## 开发与构建
+
+```sh
+npm ci
+npm run typecheck
+npm test
 npm run dist:windows
 ```
 
-GitHub Release 上传 `release/VibeMate-<version>-windows-x64.zip` 和
-`release/VibeMate-<version>-windows-arm64.zip`，分别供两种架构下载。
+Windows 打包命令会构建桌面程序、窗口跳转助手和 Linux 端运行文件，并在 `release/` 下生成 x64 与 ARM64 两种便携 ZIP。
 
----
+### 项目结构
 
-## 项目文档
+Agent 的生命周期 Hook 通过 `hook-runner` 向同机 Receiver 上报事件。Receiver 将不同 Agent 的事件归一化为会话状态，桌面端汇总已连接环境并显示提醒。
 
-- [产品需求文档（PRD）](docs/product-requirements.md)
-- [当前系统架构](docs/current-architecture.md)
-- [提醒小窗重设计交接与实测记录](docs/handoff-reminder-redesign.md)
+| 目录 | 用途 |
+| --- | --- |
+| `apps/desktop` | Electron 桌面端、悬浮窗、设备设置与窗口跳转 |
+| `packages/protocol`、`packages/core` | 事件协议、文本清理、会话状态与健康检查 |
+| `packages/adapter-*`、`packages/receiver` | Agent 事件适配、本机接收服务与远程连接 |
+| `packages/hook-runner`、`packages/hook-installer` | Hook 上报、安装、备份与卸载 |
+| `browser-preview` | 复用桌面界面的浏览器演示与模拟数据 |
+
+[产品需求](docs/product-requirements.md) · [系统架构](docs/current-architecture.md) · [悬浮提醒设计与实测记录](docs/handoff-reminder-redesign.md) · [反馈问题](https://github.com/underdmpd/vibemate/issues)
