@@ -106,13 +106,17 @@ function reportState() {
 
 // Looking at a task (and jumping back to its window, where the host supports it) settles it.
 async function goBack(item) {
+  if (api.focusSession) {
+    const { environmentId, agent, sessionId } = item.session;
+    try {
+      const message = await api.focusSession({ environmentId, agent, sessionId });
+      if (message) { $('feedback').textContent = message; return; }
+    } catch { $('feedback').textContent = '没能切到那个窗口，请手动回到对应终端。'; return; }
+  }
+  $('feedback').textContent = '';
   seen.set(item.key, item.mark);
   render(snapshot);
   void api.markSessionSeen?.(item.key, item.mark).catch(() => undefined);
-  if (!api.focusSession) return;
-  const { environmentId, agent, sessionId } = item.session;
-  try { await api.focusSession({ environmentId, agent, sessionId }); }
-  catch { $('feedback').textContent = '没能切到那个窗口，请手动回到对应终端。'; }
 }
 
 function buildTask(item, value) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import test from "node:test";
 import type { AggregatedSession, EnvironmentView } from "./environment-types.js";
 import { buildFocusCommand, findLocalGitRoot, focusSessionWindow } from "./focus-session.js";
@@ -31,7 +31,6 @@ test("focusSessionWindow resolves local git root for subdirectories", async (con
 
   assert.equal(await findLocalGitRoot(sub), root);
 
-  const calls: Array<{ command: string; args: string[] }> = [];
   const env: EnvironmentView = {
     environmentId: "w1",
     deviceId: "d1",
@@ -53,13 +52,15 @@ test("focusSessionWindow resolves local git root for subdirectories", async (con
     environmentId: "w1",
     environmentName: "Windows 本机",
   };
-  await focusSessionWindow(env, session, {
-    platform: "linux",
-    runCommand: async (command, args) => {
-      calls.push({ command, args });
-    },
-  });
-  assert.deepEqual(calls, [{ command: "code", args: [root] }]);
+  const projects: string[] = [];
+  const options = {
+    platform: "win32" as const,
+    activateExisting: async (project: string) => { projects.push(project); },
+    runCommand: async () => { throw new Error("local jump must never open a folder"); },
+  };
+  await focusSessionWindow(env, session, options);
+  await focusSessionWindow(env, { ...session, recentEvents: [] }, options);
+  assert.deepEqual(projects, [basename(root), ""]);
 });
 
 test("SeenSessionStore persists marks across reload", async (context) => {

@@ -28,7 +28,7 @@ import { parseReminderState, ReminderWindow } from "./reminder-window.js";
 import { WindowPositionStore } from "./window-position.js";
 import { describeNotice, TaskNotifier, type TaskNotice } from "./task-notifier.js";
 import { SeenSessionStore } from "./seen-store.js";
-import { focusSessionWindow } from "./focus-session.js";
+import { focusSessionWindow, WindowFocusError } from "./focus-session.js";
 
 const sourceDirectory = fileURLToPath(new URL(".", import.meta.url));
 const rendererDirectory = join(sourceDirectory, "../src/renderer");
@@ -489,7 +489,12 @@ ipcMain.handle("vibemate:focus-session", async (event, identity: unknown) => {
   if (!environment || !session) {
     throw new Error("session not found");
   }
-  await focusSessionWindow(environment, session);
+  try {
+    await focusSessionWindow(environment, session);
+  } catch (error) {
+    if (error instanceof WindowFocusError) return error.message;
+    throw error;
+  }
 });
 
 ipcMain.handle("vibemate:set-focus", async (_event, focus: unknown) => {

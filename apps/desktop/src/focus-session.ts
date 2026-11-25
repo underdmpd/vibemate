@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { AggregatedSession, EnvironmentView } from "./environment-types.js";
 
@@ -13,6 +14,7 @@ export interface FocusCommand {
 
 export interface FocusSessionOptions {
   platform?: NodeJS.Platform;
+  activateExisting?: (project: string) => Promise<void>;
   findLocalGitRoot?: (cwd: string) => Promise<string | undefined>;
   runCommand?: (command: string, args: string[], options: { shell: boolean; timeout: number }) => Promise<void>;
 }
@@ -84,6 +86,21 @@ export function buildFocusCommand(
   };
 }
 
+export class WindowFocusError extends Error {}
+
+async function activateExistingCodeWindow(project: string): Promise<void> {
+  // Electron cannot pass a script inside app.asar directly to PowerShell.
+  const script = fileURLToPath(new URL("../src/focus-code-window.ps1", import.meta.url)).replace(/\bapp\.asar([\\/])/, "app.asar.unpacked$1");
+  const { stdout } = await execFileAsync("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
+  ], { env: { ...process.env, VIBEMATE_FOCUS_PROJECT: project }, windowsHide: true, timeout: 8000 });
+  const result = stdout.trim();
+  if (result === "focused") return;
+  if (result === "none") throw new WindowFocusError("没有打开的 VS Code 窗口。");
+  if (result === "unmatched") throw new WindowFocusError("无法唯一匹配项目窗口，请手动切换。");
+  throw new WindowFocusError("Windows 未能将 VS Code 切到前台，请手动切换。");
+}
+
 async function defaultRunCommand(
   command: string,
   args: string[],
@@ -103,9 +120,14 @@ export async function focusSessionWindow(
   environment: EnvironmentView,
   session: AggregatedSession,
   options: FocusSessionOptions = {},
-): Promise<FocusCommand> {
+): Promise<void> {
   const platform = options.platform ?? process.platform;
   const rawCwd = sessionCwd(session);
+  if (platform === "win32" && environment.kind === "windows") {
+    const root = rawCwd && await (options.findLocalGitRoot ?? findLocalGitRoot)(rawCwd).catch(() => undefined);
+    await (options.activateExisting ?? activateExistingCodeWindow)(basename(root || rawCwd || ""));
+    return;
+  }
   if (!rawCwd) {
     throw new Error("session has no working directory");
   }
@@ -123,5 +145,5 @@ export async function focusSessionWindow(
     shell: platform === "win32",
     timeout: 8_000,
   });
-  return focusCmd;
+
 }
