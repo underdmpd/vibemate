@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -18,22 +19,37 @@ internal static class FocusCodeWindow
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("kernel32.dll")] private static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder path, ref int size);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
 
-    private static string Focus(string project)
+    private static bool IsCodeProcess(uint pid)
     {
-        var owners = new HashSet<uint>();
-        foreach (string name in new[] { "Code", "Code - Insiders" })
-            foreach (var process in Process.GetProcessesByName(name))
-                using (process) owners.Add((uint)process.Id);
+        var handle = OpenProcess(0x1000, false, pid); // PROCESS_QUERY_LIMITED_INFORMATION
+        if (handle == IntPtr.Zero) return false;
+        try {
+            var path = new StringBuilder(32768);
+            int size = path.Capacity;
+            if (!QueryFullProcessImageName(handle, 0, path, ref size)) return false;
+            var name = Path.GetFileName(path.ToString());
+            return String.Equals(name, "Code.exe", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(name, "Code - Insiders.exe", StringComparison.OrdinalIgnoreCase);
+        } finally { CloseHandle(handle); }
+    }
 
+    private static string Focus(string project, bool allowForegroundRetry)
+    {
+        var owners = new Dictionary<uint, bool>();
         var windows = new List<KeyValuePair<IntPtr, string>>();
         var text = new StringBuilder(2048);
         EnumWindows(delegate(IntPtr window, IntPtr unused) {
             uint pid;
+            if (!IsWindowVisible(window) || GetClassName(window, text, text.Capacity) == 0
+                || text.ToString() != "Chrome_WidgetWin_1") return true;
             GetWindowThreadProcessId(window, out pid);
-            if (owners.Contains(pid) && IsWindowVisible(window)
-                && GetClassName(window, text, text.Capacity) > 0 && text.ToString() == "Chrome_WidgetWin_1"
-                && GetWindowText(window, text, text.Capacity) > 0)
+            bool isCode;
+            if (!owners.TryGetValue(pid, out isCode)) owners[pid] = isCode = IsCodeProcess(pid);
+            if (isCode && GetWindowText(window, text, text.Capacity) > 0)
                 windows.Add(new KeyValuePair<IntPtr, string>(window, text.ToString()));
             return true;
         }, IntPtr.Zero);
@@ -49,7 +65,7 @@ internal static class FocusCodeWindow
         var target = windows[0].Key;
         if (!IsIconic(target) && GetForegroundWindow() == target) return "focused";
         if (IsIconic(target)) ShowWindowAsync(target, 9);
-        SetForegroundWindow(target);
+        if (!SetForegroundWindow(target) && allowForegroundRetry && GetForegroundWindow() != target) return "retry";
         // Activation across UI threads can finish after SetForegroundWindow returns.
         var elapsed = Stopwatch.StartNew();
         do {
@@ -61,6 +77,15 @@ internal static class FocusCodeWindow
 
     public static void Main(string[] args)
     {
-        if (args.Length == 1) Console.WriteLine(Focus(args[0]));
+        if (args.Length == 2 && args[0] == "--serve" && args[1] == "stdin") {
+            string line;
+            while ((line = Console.ReadLine()) != null) {
+                string project = Encoding.UTF8.GetString(Convert.FromBase64String(line));
+                Console.WriteLine(Focus(project, true));
+                Console.Out.Flush();
+            }
+            return;
+        }
+        if (args.Length == 1) Console.WriteLine(Focus(args[0], false));
     }
 }

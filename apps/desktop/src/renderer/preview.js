@@ -110,11 +110,16 @@ function reportState() {
 // Looking at a task (and jumping back to its window, where the host supports it) settles it.
 async function goBack(item) {
   if (api.focusSession) {
+    if (openingSessions.has(item.key)) return;
+    openingSessions.add(item.key);
+    $('feedback').textContent = '';
+    render(snapshot);
     const { environmentId, agent, sessionId } = item.session;
     try {
       const message = await api.focusSession({ environmentId, agent, sessionId });
       if (message) { $('feedback').textContent = message; return; }
     } catch { $('feedback').textContent = '没能切到那个窗口，请手动回到对应终端。'; return; }
+    finally { openingSessions.delete(item.key); render(snapshot); }
   }
   lastOpened.set(item.key, Date.now());
   acknowledge(item);
@@ -184,7 +189,8 @@ function buildTask(item, value) {
   }
   if (terminal !== 'unknown' && api.focusSession && !offline && session.state !== 'ended' && item.problem !== 'process_exited') {
     const jump = document.createElement('button');
-    jump.textContent = terminal ? '打开终端窗口' : '回到任务';
+    jump.disabled = openingSessions.has(key);
+    jump.textContent = jump.disabled ? '正在切换…' : terminal ? '打开终端窗口' : '回到任务';
     jump.onclick = () => goBack(item);
     side.append(jump);
   }

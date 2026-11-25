@@ -28,7 +28,7 @@ import { parseReminderState, ReminderWindow } from "./reminder-window.js";
 import { WindowPositionStore } from "./window-position.js";
 import { describeNotice, TaskNotifier, type TaskNotice } from "./task-notifier.js";
 import { SeenSessionStore } from "./seen-store.js";
-import { focusSessionWindow, warmCodeWindowHelper, WindowFocusError } from "./focus-session.js";
+import { closeCodeWindowHelper, focusSessionWindow, warmCodeWindowHelper, WindowFocusError } from "./focus-session.js";
 import { resumeSession } from "./resume-session.js";
 
 const sourceDirectory = fileURLToPath(new URL(".", import.meta.url));
@@ -571,6 +571,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   stopping = true;
   quitting = true;
+  closeCodeWindowHelper();
   void (async () => {
     try {
       await pet.save();

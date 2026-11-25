@@ -6,6 +6,16 @@ import test from "node:test";
 import type { AggregatedSession, EnvironmentView } from "./environment-types.js";
 import { buildFocusCommand, findLocalGitRoot, focusSessionWindow } from "./focus-session.js";
 import { SeenSessionStore } from "./seen-store.js";
+import { startCodeWindowWorker } from "./code-window-worker.js";
+
+test("a missing window helper settles all pending clicks and closes", async () => {
+  const worker = startCodeWindowWorker(join(tmpdir(), "vibemate-missing-helper", "missing.exe"));
+  const results = await Promise.allSettled([worker.focus("first"), worker.focus("second")]);
+  assert.deepEqual(results.map(result => result.status), ["rejected", "rejected"]);
+  assert.equal(worker.closed, true);
+  await assert.rejects(worker.focus("after exit"), /closed/);
+  worker.close();
+});
 
 test("buildFocusCommand builds Tier-1 VS Code commands for windows, wsl, and ssh", () => {
   assert.deepEqual(

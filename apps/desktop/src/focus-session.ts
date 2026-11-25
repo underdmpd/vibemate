@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { AggregatedSession, EnvironmentView } from "./environment-types.js";
+import { startCodeWindowWorker } from "./code-window-worker.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -91,18 +92,27 @@ export class WindowFocusError extends Error {}
 
 const codeWindowHelper = fileURLToPath(new URL("./FocusCodeWindow.exe", import.meta.url)).replace(/\bapp\.asar([\\/])/, "app.asar.unpacked$1");
 
-// Load the helper once in the background so the first click needn't pay its cold launch cost.
+let worker: ReturnType<typeof startCodeWindowWorker> | undefined;
 export function warmCodeWindowHelper(): void {
-  if (process.platform === "win32") void execFileAsync(codeWindowHelper, [], { windowsHide: true, timeout: 8000 }).catch(() => {});
+  if (process.platform === "win32" && (!worker || worker.closed)) worker = startCodeWindowWorker(codeWindowHelper);
+}
+
+export function closeCodeWindowHelper(): void {
+  worker?.close();
 }
 
 async function activateExistingWindow(project: string, terminalTarget = ""): Promise<void> {
   let result: string | undefined;
   if (!terminalTarget) {
-    try {
-      result = (await execFileAsync(codeWindowHelper, [project], { windowsHide: true, timeout: 8000 })).stdout.trim();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    warmCodeWindowHelper();
+    result = await worker?.focus(project).catch(() => undefined);
+    // A freshly spawned helper can inherit foreground permission on the user's click.
+    if (result === undefined || result === "retry") {
+      try {
+        result = (await execFileAsync(codeWindowHelper, [project], { windowsHide: true, timeout: 8000 })).stdout.trim();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
     }
   }
   if (result === undefined) result = await runFocusScript(project, terminalTarget);
