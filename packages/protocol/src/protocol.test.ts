@@ -114,3 +114,25 @@ test("bounded parsing rejects non-JSON values clearly", () => {
     /payload must be a JSON value/,
   );
 });
+
+test("event schema accepts bounded redacted title, summary, and problem", () => {
+  const parsed = parseAgentEvent({
+    protocolVersion: 1,
+    eventId: "event-meta",
+    sourceProfile: "local",
+    agent: "codex",
+    sessionId: "session-1",
+    state: "failed",
+    event: "PostModelRequest",
+    occurredAt: "2026-08-13T12:00:00.000Z",
+    title: "Fix auth token Bearer eyJhbGciOiJIUzI1NiJ9.abcdef1234567890.sig1234567890123456",
+    summary: "400 Bad Request api_key=sk-proj-1234567890abcdefghijklmnop",
+    problem: "api_failed",
+  });
+
+  assert.equal(parsed.problem, "api_failed");
+  assert.equal(parsed.title?.includes("eyJhbGci"), false);
+  assert.equal(parsed.summary?.includes("sk-proj-"), false);
+  assert.ok((parsed.title?.length ?? 0) <= 60);
+  assert.ok((parsed.summary?.length ?? 0) <= 120);
+});

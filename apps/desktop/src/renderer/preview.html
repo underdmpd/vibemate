@@ -9,25 +9,30 @@
   <body>
     <main id="monitor" data-mode="capsule">
       <button id="capsule" class="capsule" type="button" aria-label="展开任务监控">
-        <span class="capsule-dot"></span>
-        <span class="capsule-metrics">
-          <span class="metric attention"><b id="capsule-attention">0</b> 需要你</span>
-          <span class="metric working"><b id="capsule-working">0</b> 进行中</span>
-          <span class="metric completed"><b id="capsule-completed">0</b> 完成</span>
-        </span>
+        <span id="capsule-icon" class="icon"></span>
         <span id="capsule-text" class="capsule-text"></span>
-        <span id="capsule-toast" class="capsule-toast" hidden><span id="capsule-toast-text"></span><b id="capsule-toast-extra"></b></span>
+        <span id="capsule-status" class="capsule-status"></span>
+        <b id="capsule-extra" class="capsule-extra"></b>
       </button>
 
       <section id="expanded" class="expanded" hidden>
         <header id="expanded-header">
           <span id="headline"></span>
-          <span id="connection" class="connection"></span>
+          <span class="header-right">
+            <span id="connection" class="connection"></span>
+            <button id="pin-expanded" class="pin-btn" type="button" aria-pressed="false" aria-label="固定展开" title="固定展开：点击窗口外也不会收起">
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="pin-body" d="M5.5 2.5h5l-.8 4.2 1.8 1.8v1.2h-7V8.5l1.8-1.8-.8-4.2Z"/>
+                <path d="M8 9.7v4.3"/>
+              </svg>
+            </button>
+          </span>
         </header>
         <div id="tasks" aria-label="任务列表"></div>
         <p id="feedback" role="status" aria-live="polite"></p>
         <footer>
           <button id="open-settings" type="button" title="环境与偏好设置">设置</button>
+          <button id="mode-toggle" type="button" hidden></button>
           <span class="spacer"></span>
           <button id="collapse" type="button" title="收起为胶囊">收起</button>
           <button id="hide" type="button" title="隐藏到托盘">隐藏</button>

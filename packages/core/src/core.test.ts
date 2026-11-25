@@ -117,6 +117,125 @@ test("session store notifies subscribers when its visible snapshot changes", () 
   assert.equal(notifications, 2);
 });
 
+test("session store tracks startedAt, title, summary, api_timeout only in model wait, and process_exited", () => {
+  const store = new SessionStore();
+  store.apply(event({
+    eventId: "e1",
+    state: "thinking",
+    event: "UserPromptSubmit",
+    occurredAt: "2026-08-13T12:00:00.000Z",
+    title: "Fix flaky tests",
+    process: { sourcePid: 5555 },
+  }));
+  assert.equal(store.list()[0]?.startedAt, "2026-08-13T12:00:00.000Z");
+  assert.equal(store.list()[0]?.title, "Fix flaky tests");
+
+  // During PreToolUse (tool execution), model-wait timeout must NOT fire even after 1 hour.
+  store.apply(event({
+    eventId: "e2",
+    state: "working",
+    event: "PreToolUse",
+    occurredAt: "2026-08-13T12:00:05.000Z",
+  }));
+  assert.equal(store.evaluateHealth({
+    nowMs: Date.parse("2026-08-13T13:30:00.000Z"),
+    apiTimeoutMs: 360_000,
+    isProcessAlive: () => true,
+  }), 0);
+  assert.equal(store.list()[0]?.problem, undefined);
+
+  // Entering PreModelRequest starts the model-wait timer.
+  store.apply(event({
+    eventId: "e3",
+    state: "thinking",
+    event: "PreModelRequest",
+    occurredAt: "2026-08-13T12:05:00.000Z",
+  }));
+  assert.equal(store.evaluateHealth({
+    nowMs: Date.parse("2026-08-13T12:11:00.000Z"),
+    apiTimeoutMs: 360_000,
+    isProcessAlive: () => true,
+  }), 1);
+  assert.equal(store.list()[0]?.problem, "api_timeout");
+
+  // Next turn clears problem and checks process liveness.
+  store.apply(event({
+    eventId: "e4",
+    state: "thinking",
+    event: "UserPromptSubmit",
+    occurredAt: "2026-08-13T12:12:00.000Z",
+    title: "Second turn",
+  }));
+  assert.equal(store.list()[0]?.problem, undefined);
+  assert.equal(store.evaluateHealth({
+    nowMs: Date.parse("2026-08-13T12:12:05.000Z"),
+    apiTimeoutMs: 360_000,
+    isProcessAlive: (pid) => pid !== 5555,
+  }), 1);
+  assert.equal(store.list()[0]?.problem, "process_exited");
+});
+
+test("session store debounces recoverable api failures and preserves api_failed on SessionEnd", () => {
+  const store = new SessionStore({ recoverableApiFailureThreshold: 3 });
+  store.apply(event({
+    eventId: "r1",
+    agent: "copilot",
+    state: "thinking",
+    event: "userPromptSubmitted",
+    occurredAt: "2026-08-13T12:00:00.000Z",
+  }));
+  // First two recoverable retries stay running without alarming.
+  store.apply(event({
+    eventId: "r2",
+    agent: "copilot",
+    state: "failed",
+    event: "errorOccurred",
+    problem: "api_failed",
+    recoverable: true,
+    summary: "502 Bad Gateway",
+    occurredAt: "2026-08-13T12:00:01.000Z",
+  }));
+  assert.equal(store.list()[0]?.state, "thinking");
+  assert.equal(store.list()[0]?.problem, undefined);
+
+  // If sessionEnd(reason=error) arrives after recoverable failure, escalate to api_failed.
+  store.apply(event({
+    eventId: "r3",
+    agent: "copilot",
+    state: "ended",
+    event: "sessionEnd",
+    problem: "api_failed",
+    occurredAt: "2026-08-13T12:00:05.000Z",
+  }));
+  assert.equal(store.list()[0]?.state, "failed");
+  assert.equal(store.list()[0]?.problem, "api_failed");
+  assert.equal(store.list()[0]?.summary, "502 Bad Gateway");
+
+  // Hard Codex failure followed by SessionEnd preserves api_failed.
+  store.apply(event({
+    eventId: "c1",
+    agent: "codex",
+    sessionId: "s-codex",
+    state: "failed",
+    event: "PostModelRequest",
+    problem: "api_failed",
+    summary: "400 invalid_request",
+    occurredAt: "2026-08-13T12:01:00.000Z",
+  }));
+  store.apply(event({
+    eventId: "c2",
+    agent: "codex",
+    sessionId: "s-codex",
+    state: "ended",
+    event: "SessionEnd",
+    occurredAt: "2026-08-13T12:01:01.000Z",
+  }));
+  const codexSession = store.list().find((s) => s.sessionId === "s-codex");
+  assert.equal(codexSession?.state, "failed");
+  assert.equal(codexSession?.problem, "api_failed");
+  assert.equal(codexSession?.summary, "400 invalid_request");
+});
+
 test("permission broker accepts only a matching first decision", async () => {
   const broker = new PermissionBroker({
     now: () => new Date("2026-08-13T12:00:05.000Z"),

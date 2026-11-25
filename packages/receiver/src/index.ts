@@ -22,6 +22,18 @@ import {
 } from "./runtime-config.js";
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
+const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 5_000;
+const DEFAULT_API_TIMEOUT_MS = 360_000;
+
+function defaultIsProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM means the process exists but belongs to another user.
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "EPERM");
+  }
+}
 
 export interface ReceiverAddress {
   host: typeof LOOPBACK_HOST;
@@ -34,6 +46,12 @@ export interface ReceiverOptions {
   runtimeFilePath?: string;
   adapterRuntime?: Omit<AdapterRuntimeOptions, "sourceProfile">;
   onError?: (error: Error) => void;
+  /** Interval for checking exited Agent PIDs and model-request timeouts. Set 0 to disable. */
+  healthCheckIntervalMs?: number;
+  /** Threshold for model-request timeout (only timed while awaiting a model response). Default: 360_000 ms (6 min). */
+  apiTimeoutMs?: number;
+  /** Override process-liveness check (for tests). */
+  isProcessAlive?: (pid: number) => boolean;
   lan?: {
     host: string;
     port?: number;
@@ -58,9 +76,18 @@ export class VibeMateReceiver {
   private readonly lanOptions: ReceiverOptions["lan"];
   private lanServer: ReceiverLanServer | undefined;
   private lanAddress: LanServerAddress | undefined;
+  private readonly nowProvider: () => Date;
+  private readonly healthCheckIntervalMs: number;
+  private readonly apiTimeoutMs: number;
+  private readonly isProcessAlive: (pid: number) => boolean;
+  private healthTimer: NodeJS.Timeout | undefined;
 
   constructor(options: ReceiverOptions = {}) {
     this.sessions = new SessionStore();
+    this.nowProvider = options.adapterRuntime?.now ?? (() => new Date());
+    this.healthCheckIntervalMs = options.healthCheckIntervalMs ?? DEFAULT_HEALTH_CHECK_INTERVAL_MS;
+    this.apiTimeoutMs = options.apiTimeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+    this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
     this.permissions = new PermissionBroker({
       ...(options.adapterRuntime?.now ? { now: options.adapterRuntime.now } : {}),
     });
@@ -149,7 +176,14 @@ export class VibeMateReceiver {
         this.lanServer = lanServer;
         this.lanAddress = await lanServer.start();
       }
+      if (this.healthCheckIntervalMs > 0) {
+        this.healthTimer = setInterval(() => {
+          this.checkSessionHealth();
+        }, this.healthCheckIntervalMs);
+        this.healthTimer.unref();
+      }
     } catch (error) {
+      this.stopHealthTimer();
       await this.closeLanServer();
       await this.closeServer();
       await removeOwnedRuntimeConfig(this.runtimeFilePath, {
@@ -165,6 +199,7 @@ export class VibeMateReceiver {
   }
 
   async stop(): Promise<void> {
+    this.stopHealthTimer();
     this.permissions.shutdown();
     const address = this.address;
     const runtimeLock = this.runtimeLock;
@@ -188,6 +223,21 @@ export class VibeMateReceiver {
 
   getLanAddress(): LanServerAddress | undefined {
     return this.lanAddress ? { ...this.lanAddress } : undefined;
+  }
+
+  checkSessionHealth(nowMs = this.nowProvider().getTime()): number {
+    return this.sessions.evaluateHealth({
+      nowMs,
+      apiTimeoutMs: this.apiTimeoutMs,
+      isProcessAlive: this.isProcessAlive,
+    });
+  }
+
+  private stopHealthTimer(): void {
+    if (this.healthTimer) {
+      clearInterval(this.healthTimer);
+      this.healthTimer = undefined;
+    }
   }
 
   private async closeServer(): Promise<void> {

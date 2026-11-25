@@ -30,6 +30,12 @@
         <div class="section-heading"><h2>提醒</h2></div>
         <label><input id="system-notifications" type="checkbox" checked> 任务完成、失败或需要确认时弹出系统通知</label>
         <p class="connection-detail">悬浮提醒窗总会显示是哪台设备、哪个项目。系统通知适合不在电脑前或全屏时。</p>
+        <label>悬浮窗
+          <select id="reminder-mode" aria-label="悬浮窗模式">
+            <option value="pinned">常驻：一直显示，任务在跑时显示数量</option>
+            <option value="quiet">安静：任务在跑时缩成小点，有任务停下或出问题才出现</option>
+          </select>
+        </label>
       </section>
 
       <section id="pet-section" class="card" hidden>

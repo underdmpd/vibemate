@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-import { nativeFallback, readHookInput, runHook, type HookAgent } from "./index.js";
+import {
+  nativeFallback,
+  readHookInput,
+  resolveAgentSourcePid,
+  runHook,
+  type HookAgent,
+} from "./index.js";
 
 function parseAgent(value: string | undefined): HookAgent | undefined {
   return value === "codex" || value === "copilot" ? value : undefined;
@@ -23,11 +29,15 @@ async function main(): Promise<void> {
 
   let stdout = nativeFallback(agent);
   try {
-    const input = await readHookInput(process.stdin);
+    const [input, sourcePid] = await Promise.all([
+      readHookInput(process.stdin),
+      resolveAgentSourcePid().catch(() => undefined),
+    ]);
     const result = await runHook({
       agent,
       input,
       ...(process.argv[3] ? { eventName: process.argv[3] } : {}),
+      ...(sourcePid !== undefined ? { sourcePid } : {}),
     });
     stdout = result.stdout;
   } catch (error) {

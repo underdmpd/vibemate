@@ -63,6 +63,7 @@ export type EnvironmentConfig = WindowsEnvironment | WslEnvironment | SshEnviron
 export type EnvironmentView = EnvironmentConfig & {
   status: EnvironmentStatus;
   error?: string;
+  disconnectedAt?: string;
   manuallyStarted: boolean;
 };
 
@@ -87,6 +88,11 @@ export interface DesktopPreferences {
   showPreview: boolean;
   /** OS notification when a task completes, fails or needs permission. */
   systemNotifications: boolean;
+  /**
+   * pinned: the capsule is always visible. quiet: it shrinks to a faint dot while every task is
+   * simply running, and comes back, staying put, once a task stops and needs the user.
+   */
+  reminderMode: "pinned" | "quiet";
   focus: { kind: "all" | "device" | "environment" | "project" | "session"; id?: string };
 }
 
@@ -105,4 +111,6 @@ export interface AggregatedSnapshot {
   pendingPermissions: AggregatedPermission[];
   preferences: DesktopPreferences;
   onboardingCompleted: boolean;
+  /** Session identity -> `${updatedAt}/${problem ?? ''}` marks persisted by the main process. */
+  seenSessions?: Record<string, string>;
 }

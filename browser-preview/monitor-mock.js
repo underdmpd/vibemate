@@ -23,20 +23,28 @@
         { environmentId: 'linux', deviceId: 'lab', name: '实验室 Linux', kind: 'ssh', sshHost: 'lab', status: 'connected', enabled: true, codexApprovalsEnabled: false },
         { environmentId: 'pi', deviceId: 'pi', name: '树莓派', kind: 'ssh', sshHost: 'pi', status: 'connected', enabled: true, codexApprovalsEnabled: false },
       ],
-      preferences: { petEnabled: false, showPet: true, showPreview: true, systemNotifications: true, focus: { kind: 'all' } },
+      preferences: { petEnabled: false, showPet: true, showPreview: true, systemNotifications: true, reminderMode: snapshot?.preferences?.reminderMode ?? 'pinned', focus: { kind: 'all' } },
       onboardingCompleted: true,
       sessions: [], pendingPermissions: [],
     };
-    for (const [index, [id, agent, title, state, project]] of [
-      ['windows', 'codex', '前端页面调整', 'working', 'vibemate-web'],
-      ['ubuntu', 'codex', '运行项目测试', 'waiting_permission', 'robot-arm'],
-      ['linux', 'copilot', '更新服务配置', 'waiting_permission', 'gateway'],
-      ['ubuntu', 'copilot', '整理接口文档', 'completed', 'api-docs'],
-      ['pi', 'codex', '传感器驱动', 'working', 'sensor-hub'],
+    // [environment, agent, session, project, what the user asked for, what the agent said when it stopped,
+    //  state in the "mixed" scene, state in the "now" scene, minutes since last activity, minutes running]
+    const minute = 60_000;
+    for (const [index, [id, agent, sessionId, project, title, summary, mixedState, nowState, quiet, ran]] of [
+      ['pi', 'codex', '传感器驱动', 'sensor-hub', '修 I2C 读数偶发超时', '加了重试和超时保护，12 个测试全过。', 'working', 'completed', 2, 18],
+      ['linux', 'copilot', '更新服务配置', 'gateway', '升级 nginx 配置', '配置改好了。要 reload 还是 restart？等你决定。', 'waiting_permission', 'completed', 6, 9],
+      ['ubuntu', 'codex', '运行项目测试', 'robot-arm', '跑全量测试并修掉失败项', undefined, 'waiting_permission', 'working', 3, 31],
+      ['windows', 'codex', '前端页面调整', 'vibemate-web', '调整设置页布局', '布局已调整，截图对比放在 docs/ 下。', 'working', 'working', 0.3, 12],
+      ['ubuntu', 'copilot', '整理接口文档', 'api-docs', '整理接口文档', '文档已更新，新增 4 个接口说明。', 'completed', 'working', 1, 4],
     ].entries()) {
       const env = environment(id);
-      snapshot.sessions.push({ environmentId: id, deviceId: env.deviceId, environmentName: env.name, sourceProfile: id, project,
-        agent, sessionId: title, state: mixed ? state : mode, updatedAt: new Date(Date.now() - index * 30_000).toISOString() });
+      const state = mixed ? mixedState : mode === 'now' ? nowState : mode;
+      const age = mode === 'now' ? quiet * minute : index * 30_000;
+      snapshot.sessions.push({ environmentId: id, deviceId: env.deviceId, environmentName: env.name, sourceProfile: id, project, title,
+        summary: ['completed', 'failed'].includes(state) ? (state === 'failed' ? '构建失败：找不到依赖 libgpiod，需要你装一下。' : summary) : undefined,
+        problem: mode === 'now' && sessionId === '运行项目测试' ? 'api_timeout' : undefined,
+        agent, sessionId, state, startedAt: new Date(Date.now() - ran * minute).toISOString(),
+        updatedAt: new Date(Date.now() - age).toISOString() });
     }
     if (mixed) snapshot.pendingPermissions.push({ environmentId: 'ubuntu', deviceId: 'pc', environmentName: 'WSL · Ubuntu',
       requestId: 'demo-permission', sourceProfile: 'ubuntu', agent: 'codex', sessionId: '运行项目测试',
@@ -47,18 +55,32 @@
   window.simulateNotice = (sessionId, kind) => {
     const session = snapshot.sessions.find(item => item.sessionId === sessionId);
     if (!session) return;
-    session.state = kind; session.updatedAt = new Date().toISOString();
+    // api_failed / api_timeout / process_exited interrupt a running task; the state itself never moved on.
+    const problem = ['api_failed', 'api_timeout', 'process_exited'].includes(kind) ? kind : undefined;
+    session.state = problem ? 'working' : kind;
+    session.problem = problem;
+    session.updatedAt = new Date().toISOString();
+    session.summary = kind === 'failed' ? '构建失败：找不到依赖 libgpiod，需要你装一下。'
+      : kind === 'api_failed' ? '400 Bad Request：模型接口拒绝了请求。'
+      : kind === 'completed' ? '改完了，测试全过。' : undefined;
     emit();
     const notice = { id: `${session.environmentId}/${session.agent}/${session.sessionId}`, kind,
       environmentName: session.environmentName, project: session.project, agent: session.agent, at: session.updatedAt };
     for (const listener of noticeListeners) listener(notice);
-    const text = { completed: '已完成', failed: '失败了', waiting_permission: '需要你确认' }[kind];
-    feedback(`模拟提醒：${session.environmentName} · ${session.project} ${text}。桌面版会同时弹出系统通知。`);
+    const text = { completed: '完成了', failed: '失败了', waiting_permission: '等你确认', api_failed: '模型请求失败', api_timeout: '模型请求超时', process_exited: '进程没了' }[kind];
+    feedback(`模拟提醒：${session.environmentName} · ${session.title} ${text}。桌面版会同时弹出系统通知。`);
   };
+  window.simulateOffline = id => { environment(id).status = 'reconnecting'; environment(id).disconnectedAt = new Date(Date.now() - 120_000).toISOString(); emit(`模拟：${environment(id).name} 掉线了，上面的任务状态未知。`); };
   window.vibemate = {
+    // Desktop: brings the VS Code window that hosts this session to the front.
+    async focusSession(identity) {
+      const session = snapshot.sessions.find(item => item.environmentId === identity.environmentId && item.sessionId === identity.sessionId);
+      feedback(`模拟：已切到 VS Code 窗口「${session.environmentName} · ${session.project}」。`);
+    },
     onNotice: listener => { noticeListeners.add(listener); return () => noticeListeners.delete(listener); },
     getSnapshot: async () => clone(),
     onSnapshot: listener => { listeners.add(listener); return () => listeners.delete(listener); },
+    async setReminderMode(mode) { snapshot.preferences.reminderMode = mode; return emit(mode === 'quiet' ? '安静模式：任务在跑时缩成小点，有任务停下或出问题才出现。' : '常驻模式：胶囊一直显示。'); },
     async setCodexApprovals(id, enabled) {
       environment(id).codexApprovalsEnabled = enabled;
       if (!enabled) release(id);
@@ -116,5 +138,5 @@
       return emit('已加入示例环境列表，没有执行 SSH 连接。');
     },
   };
-  window.monitorDemo();
+  window.monitorDemo(location.pathname === '/floating' ? 'now' : 'mixed');
 })();

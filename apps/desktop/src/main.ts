@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +27,8 @@ import { PetWindow } from "./pet-window.js";
 import { parseReminderState, ReminderWindow } from "./reminder-window.js";
 import { WindowPositionStore } from "./window-position.js";
 import { describeNotice, TaskNotifier, type TaskNotice } from "./task-notifier.js";
+import { SeenSessionStore } from "./seen-store.js";
+import { focusSessionWindow } from "./focus-session.js";
 
 const sourceDirectory = fileURLToPath(new URL(".", import.meta.url));
 const rendererDirectory = join(sourceDirectory, "../src/renderer");
@@ -54,6 +57,7 @@ async function installWindowsHooks(): Promise<void> {
 
 let configuration: DesktopConfiguration;
 let environmentStore: EnvironmentStore;
+let seenStore: SeenSessionStore | undefined;
 let receiverManager: ReceiverConnectionManager;
 const sshConnections = new SshConnectionService(async ({ host, port, fingerprint }) => {
   const options = {
@@ -80,11 +84,12 @@ let snapshotScheduled = false;
 let quitting = false;
 
 function getSnapshot() {
-  return receiverManager?.getSnapshot() ?? {
+  const base = receiverManager?.getSnapshot() ?? {
     devices: [], environments: [], sessions: [], pendingPermissions: [],
-    preferences: { petEnabled: false, showPet: true, showPreview: true, systemNotifications: true, focus: { kind: "all" as const } },
+    preferences: { petEnabled: false, showPet: true, showPreview: true, systemNotifications: true, reminderMode: "pinned" as const, focus: { kind: "all" as const } },
     onboardingCompleted: false,
   };
+  return seenStore ? { ...base, seenSessions: seenStore.getAll() } : base;
 }
 
 function publishSnapshot(): void {
@@ -97,6 +102,11 @@ function publishSnapshot(): void {
 }
 
 const taskNotifier = new TaskNotifier();
+let offlineCheckTimer: NodeJS.Timeout | undefined;
+
+function checkNotices(): void {
+  for (const notice of taskNotifier.diff(getSnapshot())) deliverNotice(notice);
+}
 
 function scheduleSnapshot(): void {
   if (snapshotScheduled) {
@@ -106,7 +116,7 @@ function scheduleSnapshot(): void {
   queueMicrotask(() => {
     snapshotScheduled = false;
     publishSnapshot();
-    for (const notice of taskNotifier.diff(getSnapshot())) deliverNotice(notice);
+    checkNotices();
   });
 }
 
@@ -133,6 +143,7 @@ function createControlWindow(): BrowserWindow {
     minHeight: 480,
     show: !configuration?.onboardingCompleted,
     title: "VibeMate 设置",
+    icon: createTrayIcon(),
     backgroundColor: "#111827",
     webPreferences: {
       preload: preloadPath,
@@ -204,17 +215,8 @@ function togglePetWindow(): void {
 }
 
 function createTrayIcon() {
-  const svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">',
-    '<rect x="3" y="5" width="26" height="24" rx="9" fill="#60a5fa"/>',
-    '<rect x="9" y="14" width="4" height="6" rx="2" fill="#0f172a"/>',
-    '<rect x="19" y="14" width="4" height="6" rx="2" fill="#0f172a"/>',
-    '<path d="M16 5V2" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/>',
-    "</svg>",
-  ].join("");
-  return nativeImage.createFromDataURL(
-    `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`,
-  ).resize({ width: 20, height: 20 });
+  const iconBuffer = readFileSync(join(rendererDirectory, "assets", "tray-icon.png"));
+  return nativeImage.createFromBuffer(iconBuffer).resize({ width: 20, height: 20 });
 }
 
 function updateTrayMenu(): void {
@@ -479,11 +481,60 @@ ipcMain.handle("vibemate:set-system-notifications", async (event, enabled: unkno
   return getSnapshot();
 });
 
+ipcMain.handle("vibemate:set-reminder-mode", async (event, mode: unknown) => {
+  // Reachable from both the settings page and the reminder window's own footer.
+  if (event.sender !== reminder.window?.webContents) settingsInput(event, {});
+  if (mode !== "pinned" && mode !== "quiet") throw new TypeError("invalid reminder mode");
+  configuration.preferences.reminderMode = mode;
+  await environmentStore.save(configuration);
+  receiverManager.setConfiguration(configuration);
+  return getSnapshot();
+});
+
 ipcMain.handle("vibemate:set-pet-enabled", async (event, enabled: unknown) => {
   settingsInput(event, {});
   if (typeof enabled !== "boolean") throw new TypeError("invalid pet setting");
   await setPetEnabled(enabled);
   return getSnapshot();
+});
+
+ipcMain.handle("vibemate:mark-session-seen", async (event, key: unknown, mark: unknown) => {
+  if (event.sender !== reminder.window?.webContents) throw new Error("unauthorized");
+  if (typeof key !== "string" || !key || typeof mark !== "string" || !mark) {
+    throw new TypeError("invalid seen mark");
+  }
+  await seenStore?.markSeen(key, mark);
+  publishSnapshot();
+  return getSnapshot();
+});
+
+ipcMain.handle("vibemate:focus-session", async (event, identity: unknown) => {
+  if (event.sender !== reminder.window?.webContents && event.sender !== controlWindow?.webContents) {
+    throw new Error("unauthorized");
+  }
+  if (
+    !identity
+    || typeof identity !== "object"
+    || !("environmentId" in identity)
+    || !("agent" in identity)
+    || !("sessionId" in identity)
+    || typeof identity.environmentId !== "string"
+    || (identity.agent !== "codex" && identity.agent !== "copilot")
+    || typeof identity.sessionId !== "string"
+  ) {
+    throw new TypeError("invalid session identity");
+  }
+  const snapshot = getSnapshot();
+  const environment = snapshot.environments.find((item) => item.environmentId === identity.environmentId);
+  const session = snapshot.sessions.find((item) => (
+    item.environmentId === identity.environmentId
+    && item.agent === identity.agent
+    && item.sessionId === identity.sessionId
+  ));
+  if (!environment || !session) {
+    throw new Error("session not found");
+  }
+  await focusSessionWindow(environment, session);
 });
 
 ipcMain.handle("vibemate:set-focus", async (_event, focus: unknown) => {
@@ -507,7 +558,8 @@ async function startDesktop(): Promise<void> {
   await app.whenReady();
   try {
     environmentStore = new EnvironmentStore(join(app.getPath("userData"), "environments.json"), hostname());
-    configuration = await environmentStore.load();
+    seenStore = new SeenSessionStore(join(app.getPath("userData"), "seen-sessions.json"));
+    [configuration] = await Promise.all([environmentStore.load(), seenStore.load()]);
     const payloadRoot = app.isPackaged
       ? join(process.resourcesPath, "linux-payload")
       : fileURLToPath(new URL("../../../build/linux-payload", import.meta.url));
@@ -515,6 +567,10 @@ async function startDesktop(): Promise<void> {
       console.error("Environment Receiver error:", error.message);
     });
     receiverManager.subscribe(scheduleSnapshot);
+    offlineCheckTimer = setInterval(() => {
+      checkNotices();
+    }, 5_000);
+    offlineCheckTimer.unref();
     const local = configuration.environments.find((environment) => environment.kind === "windows" && environment.enabled);
     if (local) {
       await installWindowsHooks();
@@ -576,6 +632,10 @@ app.on("before-quit", (event) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown position save error";
       console.error(`Could not save pet position during shutdown: ${message}`);
+    }
+    if (offlineCheckTimer) {
+      clearInterval(offlineCheckTimer);
+      offlineCheckTimer = undefined;
     }
     try {
       await receiverManager?.stopAll(3_000);

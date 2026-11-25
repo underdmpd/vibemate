@@ -20,6 +20,7 @@ interface Connection {
   endpoint?: ReceiverEndpoint | undefined;
   status: EnvironmentStatus;
   error?: string | undefined;
+  disconnectedAt?: string | undefined;
   manuallyStarted: boolean;
   unsubscribe?: (() => void) | undefined;
 }
@@ -84,7 +85,14 @@ export class ReceiverConnectionManager {
       connection.client = client;
       connection.unsubscribe = client.subscribe(() => {
         const status = client.getStatus();
-        connection.status = status === "connecting" ? "starting" : status;
+        const nextStatus: EnvironmentStatus = status === "connecting" ? "starting" : status;
+        const wasConnected = connection.status === "connected";
+        connection.status = nextStatus;
+        if (nextStatus === "connected") {
+          connection.disconnectedAt = undefined;
+        } else if (wasConnected && !connection.disconnectedAt) {
+          connection.disconnectedAt = new Date().toISOString();
+        }
         this.notify();
       });
       client.start();
@@ -107,6 +115,7 @@ export class ReceiverConnectionManager {
     const endpoint = connection.endpoint;
     connection.endpoint = undefined;
     connection.status = "stopped";
+    connection.disconnectedAt = undefined;
     connection.manuallyStarted = false;
     this.notify();
     if (endpoint) await endpoint.stop();
@@ -155,6 +164,7 @@ export class ReceiverConnectionManager {
           status: connection?.status ?? "stopped",
           manuallyStarted: connection?.manuallyStarted ?? false,
           ...(connection?.error ? { error: connection.error } : {}),
+          ...(connection?.disconnectedAt ? { disconnectedAt: connection.disconnectedAt } : {}),
         };
       }),
       sessions,

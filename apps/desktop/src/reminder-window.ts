@@ -52,8 +52,13 @@ export class ReminderWindow {
   }
 
   setState(state: ReminderState): void {
+    const opening = this.state.mode !== "expanded" && state.mode === "expanded";
     this.state = state;
     this.apply();
+    // Ensure the expanded panel owns focus so clicking outside reliably fires blur to collapse it.
+    if (opening && this.window && !this.window.isDestroyed() && this.window.isVisible()) {
+      this.window.focus();
+    }
   }
 
   drag(phase: "start" | "move" | "end", dx: number, dy: number): void {

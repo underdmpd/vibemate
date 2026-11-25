@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readCopilotLastAssistantMessage, resolveAgentSourcePid } from "./enrich.js";
 import { loadRuntimeConfig } from "./runtime-config.js";
 
 const MAX_HOOK_BYTES = 256 * 1024;
@@ -17,6 +18,8 @@ export interface RunHookOptions {
   fetchImpl?: typeof fetch;
   lifecycleTimeoutMs?: number;
   permissionTimeoutMs?: number;
+  /** Optional explicit source PID (injected by CLI after skipping wrapper shells). */
+  sourcePid?: number;
 }
 
 export interface HookRunResult {
@@ -187,6 +190,46 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
   }
   const input = parseInput(options.input);
   const permission = permissionEvent(options.agent, options.eventName, input);
+
+  // Enrich payload locally before sending to the loopback receiver:
+  // 1. Inject resolved Agent source PID when provided and not already present.
+  // 2. For Copilot agentStop, extract only the last assistant reply from local transcriptPath tail.
+  let bodyText = options.input;
+  let enriched: Record<string, unknown> | undefined;
+  if (
+    options.sourcePid !== undefined
+    && Number.isInteger(options.sourcePid)
+    && options.sourcePid > 0
+    && input.source_pid === undefined
+    && input.sourcePid === undefined
+  ) {
+    enriched = { ...input };
+    if (options.agent === "codex") {
+      enriched.source_pid = options.sourcePid;
+    } else {
+      enriched.sourcePid = options.sourcePid;
+    }
+  }
+  if (
+    options.agent === "copilot"
+    && options.eventName === "agentStop"
+    && typeof input.transcriptPath === "string"
+    && input.lastAssistantMessage === undefined
+    && input.last_assistant_message === undefined
+  ) {
+    const lastMessage = await readCopilotLastAssistantMessage(input.transcriptPath);
+    if (lastMessage) {
+      enriched = enriched ?? { ...input };
+      enriched.lastAssistantMessage = lastMessage.slice(0, 1024);
+    }
+  }
+  if (enriched) {
+    const serialized = JSON.stringify(enriched);
+    if (Buffer.byteLength(serialized, "utf8") <= MAX_HOOK_BYTES) {
+      bodyText = serialized;
+    }
+  }
+
   const runtimePath = options.runtimeFilePath
     ?? process.env.VIBEMATE_RUNTIME_PATH
     ?? join(homedir(), ".vibemate", "runtime.json");
@@ -206,7 +249,7 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
         "content-type": "application/json",
         "x-vibemate-token": runtime.authToken,
       },
-      body: options.input,
+      body: bodyText,
       redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     },
@@ -247,4 +290,5 @@ export function nativeFallback(agent: HookAgent): string {
   return fallbackOutput(agent);
 }
 
+export * from "./enrich.js";
 export * from "./runtime-config.js";

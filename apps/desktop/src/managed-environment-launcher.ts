@@ -152,7 +152,7 @@ export class ManagedEnvironmentLauncher implements EnvironmentLauncher {
   private async provisionWsl(distribution: string): Promise<void> {
     const architecture = (await this.capture("wsl.exe", ["--distribution", distribution, "--exec", "uname", "-m"])).trim();
     const payload = await this.payloadForArchitecture(architecture);
-    await this.copyPayload(payload, "wsl.exe", ["--distribution", distribution, "--exec", "sh", "-lc", "mkdir -p \"$HOME/.vibemate\" && tar -xf - -C \"$HOME/.vibemate\""]);
+    await this.copyPayload(payload, "wsl.exe", ["--distribution", distribution, "--exec", "sh", "-lc", 'mkdir -p "$HOME/.vibemate" && tar -xf - -C "$HOME/.vibemate" && chmod 700 "$HOME/.vibemate/runtime/node"']);
     await this.capture("wsl.exe", ["--distribution", distribution, "--exec", "sh", "-lc", `${REMOTE_NODE} ${REMOTE_INSTALLER} install`]);
   }
 
@@ -161,7 +161,7 @@ export class ManagedEnvironmentLauncher implements EnvironmentLauncher {
     await this.capture("ssh", ["-G", host]);
     const architecture = (await this.capture("ssh", [...common, "uname -m"])).trim();
     const payload = await this.payloadForArchitecture(architecture);
-    await this.copyPayload(payload, "ssh", [...common, "mkdir -p \"$HOME/.vibemate\" && tar -xf - -C \"$HOME/.vibemate\""]);
+    await this.copyPayload(payload, "ssh", [...common, 'mkdir -p "$HOME/.vibemate" && tar -xf - -C "$HOME/.vibemate" && chmod 700 "$HOME/.vibemate/runtime/node"']);
     await this.capture("ssh", [...common, `${REMOTE_NODE} ${REMOTE_INSTALLER} install`]);
   }
 

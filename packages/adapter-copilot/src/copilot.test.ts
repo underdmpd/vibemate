@@ -89,3 +89,39 @@ test("Copilot no-decision is an empty 204 response", () => {
     body: "",
   });
 });
+
+test("Copilot adapter extracts title, stop summary, and model_call error metadata", () => {
+  const instance = adapter();
+  const prompt = instance.adapt("userPromptSubmitted", {
+    sessionId: "s-meta",
+    prompt: "Upgrade nginx config\nwith zero downtime",
+    sourcePid: 9876,
+  });
+  assert.equal(prompt.kind, "event");
+  if (prompt.kind === "event") {
+    assert.equal(prompt.event.title, "Upgrade nginx config");
+    assert.equal(prompt.event.process?.sourcePid, 9876);
+  }
+
+  const err = instance.adapt("errorOccurred", {
+    sessionId: "s-meta",
+    errorContext: "model_call",
+    recoverable: true,
+    error: { message: "\"Failed native model HTTP request: 502 Bad Gateway\"" },
+  });
+  assert.equal(err.kind, "event");
+  if (err.kind === "event") {
+    assert.equal(err.event.problem, "api_failed");
+    assert.equal(err.event.recoverable, true);
+    assert.equal(err.event.summary, "Failed native model HTTP request: 502 Bad Gateway");
+  }
+
+  const stop = instance.adapt("agentStop", {
+    sessionId: "s-meta",
+    lastAssistantMessage: "Config updated. Reload or restart?",
+  });
+  assert.equal(stop.kind, "event");
+  if (stop.kind === "event") {
+    assert.equal(stop.event.summary, "Reload or restart?");
+  }
+});

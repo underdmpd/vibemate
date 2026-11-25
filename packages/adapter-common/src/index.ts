@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  extractFirstLine,
+  extractLastSentence,
   MAX_CWD_LENGTH,
+  MAX_SUMMARY_LENGTH,
+  MAX_TITLE_LENGTH,
   MAX_TOOL_NAME_LENGTH,
   MAX_TOOL_SUMMARY_LENGTH,
   sanitizeText,
@@ -91,6 +95,73 @@ export function readPositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0
     ? value
     : undefined;
+}
+
+export function sanitizePromptTitle(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const firstLine = extractFirstLine(candidate);
+    if (!firstLine) continue;
+    const cleaned = sanitizeText(firstLine, { maxLength: MAX_TITLE_LENGTH, redactSecrets: true });
+    if (cleaned) return cleaned;
+  }
+  return undefined;
+}
+
+export function sanitizeReplySummary(...candidates: unknown[]): string | undefined {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const sentence = extractLastSentence(candidate);
+    if (!sentence) continue;
+    const cleaned = sanitizeText(sentence, { maxLength: MAX_SUMMARY_LENGTH, redactSecrets: true });
+    if (cleaned) return cleaned;
+  }
+  return undefined;
+}
+
+export function sanitizeErrorSummary(value: unknown): string | undefined {
+  let raw: string | undefined;
+  if (typeof value === "string") {
+    raw = value;
+  } else {
+    const record = asRecord(value);
+    if (record && typeof record.message === "string") {
+      raw = record.message;
+    }
+  }
+  if (!raw) return undefined;
+  let text = raw.trim();
+  // Unwrap JSON error envelopes (e.g. Codex PostModelRequest: '{"error":{"message":"..."},"request_id":"..."}')
+  // and JSON-quoted strings (e.g. Copilot native error message wrapped in quotes).
+  for (let depth = 0; depth < 2; depth += 1) {
+    if ((text.startsWith("{") && text.endsWith("}")) || (text.startsWith("\"") && text.endsWith("\""))) {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (typeof parsed === "string") {
+          text = parsed.trim();
+          continue;
+        }
+        const parsedRecord = asRecord(parsed);
+        const nested = asRecord(parsedRecord?.error);
+        const message = typeof nested?.message === "string"
+          ? nested.message
+          : typeof parsedRecord?.message === "string"
+            ? parsedRecord.message
+            : undefined;
+        if (message) {
+          text = message.trim();
+          continue;
+        }
+      } catch {
+        break;
+      }
+    }
+    break;
+  }
+  const firstLine = extractFirstLine(text);
+  if (!firstLine) return undefined;
+  const cleaned = sanitizeText(firstLine, { maxLength: MAX_SUMMARY_LENGTH, redactSecrets: true });
+  return cleaned || undefined;
 }
 
 function canonicalize(value: unknown): unknown {

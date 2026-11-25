@@ -43,7 +43,7 @@ async function bundle(output) {
     await build({
       entryPoints: [join(root, entry)], outfile: join(output, destination), bundle: true,
       platform: "node", format: "esm", target: "node22", sourcemap: false,
-      banner: { js: "#!/usr/bin/env node\nimport { createRequire as __vibemateCreateRequire } from 'node:module'; const require = __vibemateCreateRequire(import.meta.url);" },
+      banner: { js: "import { createRequire as __vibemateCreateRequire } from 'node:module'; const require = __vibemateCreateRequire(import.meta.url);" },
     });
   }
 }

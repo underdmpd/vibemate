@@ -6,6 +6,7 @@ const onboardingTip = document.querySelector("#onboarding-tip");
 const focusSelect = document.querySelector("#pet-focus");
 const petSection = document.querySelector("#pet-section");
 const systemNotifications = document.querySelector("#system-notifications");
+const reminderMode = document.querySelector("#reminder-mode");
 const addSshButton = document.querySelector("#add-ssh");
 const feedback = document.querySelector("#settings-feedback");
 const sshDialog = createSshDeviceDialog(window.vibemate, render, message => { feedback.textContent = message; });
@@ -91,6 +92,7 @@ function render(snapshot) {
   onboardingTip.hidden = Boolean(snapshot?.onboardingCompleted);
   petSection.hidden = snapshot?.preferences?.petEnabled !== true;
   systemNotifications.checked = snapshot?.preferences?.systemNotifications !== false;
+  reminderMode.value = snapshot?.preferences?.reminderMode === "quiet" ? "quiet" : "pinned";
   const focusOptions = [new Option("全部任务", "all:"),
     ...(snapshot?.devices ?? []).map((item) => new Option(`设备 · ${item.name}`, `device:${item.deviceId}`)),
     ...environments.map((item) => new Option(`环境 · ${item.name}`, `environment:${item.environmentId}`)),
@@ -115,6 +117,11 @@ focusSelect.addEventListener("change", async () => {
   render(await window.vibemate.setFocus(kind === "all" ? { kind } : { kind, id }));
 });
 addSshButton.addEventListener("click", () => sshDialog.open());
+
+reminderMode.addEventListener("change", async () => {
+  try { render(await window.vibemate.setReminderMode(reminderMode.value)); }
+  catch (error) { feedback.textContent = error.message; }
+});
 
 systemNotifications.addEventListener("change", async () => {
   systemNotifications.disabled = true;

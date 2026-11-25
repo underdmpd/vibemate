@@ -42,7 +42,8 @@ async function receiverReady(channel: ClientChannel): Promise<Ready> {
 }
 
 async function uploadPayload(client: Client, payload: string): Promise<void> {
-  const channel = await openCommand(client, 'umask 077; mkdir -p "$HOME/.vibemate" && tar -xf - -C "$HOME/.vibemate"');
+  // Windows tar strips POSIX +x bits when archiving NTFS files, so restore execute permission on Linux.
+  const channel = await openCommand(client, 'umask 077; mkdir -p "$HOME/.vibemate" && tar -xf - -C "$HOME/.vibemate" && chmod 700 "$HOME/.vibemate/runtime/node"');
   const archive = spawn("tar", ["-cf", "-", "-C", payload, "."], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   channel.resume(); channel.stderr.resume(); archive.stderr.resume();
   let timeout: NodeJS.Timeout | undefined;

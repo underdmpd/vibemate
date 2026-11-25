@@ -8,6 +8,9 @@ import {
   readPositiveInteger,
   requireRecord,
   requireString,
+  sanitizeErrorSummary,
+  sanitizePromptTitle,
+  sanitizeReplySummary,
   type AdapterPermissionOutcome,
   type AdapterRuntimeOptions,
 } from "@vibemate/adapter-common";
@@ -17,6 +20,7 @@ import {
   PROTOCOL_VERSION,
   type AgentEvent,
   type PermissionRequest,
+  type SessionProblem,
   type UnifiedState,
 } from "@vibemate/protocol";
 
@@ -69,6 +73,31 @@ export class CopilotAdapter {
       turnId = explicitTurnId ?? this.runtime.currentTurn("copilot", sessionId);
     }
 
+    let title: string | undefined;
+    let summary: string | undefined;
+    let problem: SessionProblem | undefined;
+    let recoverable: boolean | undefined;
+
+    if (eventName === "userPromptSubmitted" || eventName === "sessionStart") {
+      title = sanitizePromptTitle(payload.prompt, payload.initialPrompt);
+    } else if (eventName === "agentStop") {
+      summary = sanitizeReplySummary(payload.lastAssistantMessage, payload.last_assistant_message);
+    } else if (eventName === "errorOccurred") {
+      const errorContext = readOptionalString(payload.errorContext, payload.error_context);
+      if (errorContext === "model_call") {
+        problem = "api_failed";
+      }
+      if (typeof payload.recoverable === "boolean") {
+        recoverable = payload.recoverable;
+      }
+      summary = sanitizeErrorSummary(payload.error);
+    } else if (eventName === "sessionEnd") {
+      const reason = readOptionalString(payload.reason);
+      if (reason === "error") {
+        problem = "api_failed";
+      }
+    }
+
     const toolName = readOptionalString(payload.toolName, payload.tool_name);
     const toolInput = decodeJsonValue(
       payload.toolInput ?? payload.toolArgs ?? payload.tool_input,
@@ -89,6 +118,10 @@ export class CopilotAdapter {
         occurredAt: this.runtime.occurredAt(payload.timestamp ?? payload.occurredAt),
         ...(turnId ? { turnId } : {}),
         ...(cwd ? { cwd } : {}),
+        ...(title ? { title } : {}),
+        ...(summary ? { summary } : {}),
+        ...(problem ? { problem } : {}),
+        ...(recoverable !== undefined ? { recoverable } : {}),
         ...(toolName ? { tool: buildToolMetadata({ name: toolName, input: toolInput }) } : {}),
         ...(sourcePid ? { process: { sourcePid } } : {}),
       }),

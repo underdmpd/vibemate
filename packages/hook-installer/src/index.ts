@@ -18,11 +18,15 @@ import { fileURLToPath } from "node:url";
 const MARKER = "vibemate-hook-runner";
 const CODEX_EVENTS = [
   "SessionStart",
+  "SessionEnd",
   "UserPromptSubmit",
+  "PreModelRequest",
+  "PostModelRequest",
   "PreToolUse",
   "PermissionRequest",
   "PostToolUse",
   "Stop",
+  "Interrupt",
 ] as const;
 const COPILOT_EVENTS = [
   "sessionStart",
@@ -297,7 +301,11 @@ export async function installCodexHooks(
       hooks: [{
         type: "command",
         ...commands,
-        timeout: event === "PermissionRequest" ? 600 : 30,
+        timeout: event === "PermissionRequest"
+          ? 600
+          : event === "SessionEnd" || event === "Interrupt"
+            ? 3
+            : 30,
       }],
     };
     const reconciled = reconcileEntry(

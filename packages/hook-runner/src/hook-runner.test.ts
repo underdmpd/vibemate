@@ -5,7 +5,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { nativeFallback, parseRuntimeConfig, runHook } from "./index.js";
+import {
+  nativeFallback,
+  parseRuntimeConfig,
+  readCopilotLastAssistantMessage,
+  resolveAgentSourcePid,
+  runHook,
+} from "./index.js";
 
 const TOKEN = "a".repeat(43);
 
@@ -281,4 +287,49 @@ test("CLI exits successfully with native fallback when the receiver is absent", 
   assert.equal(copilot.exitCode, 0);
   assert.equal(copilot.stdout, "");
   assert.equal(copilot.stderr, "");
+});
+
+test("resolveAgentSourcePid skips transient wrapper shells on Linux", async () => {
+  const tree = new Map<number, { comm: string; ppid: number }>([
+    [300, { comm: "bash", ppid: 200 }],
+    [200, { comm: "sh", ppid: 100 }],
+    [100, { comm: "codex", ppid: 50 }],
+  ]);
+  const pid = await resolveAgentSourcePid(300, {
+    platform: "linux",
+    readParent: async (p) => tree.get(p),
+  });
+  assert.equal(pid, 100);
+  assert.equal(await resolveAgentSourcePid(300, { platform: "win32" }), undefined);
+});
+
+test("Copilot agentStop reads last assistant message from transcript tail", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "vibemate-transcript-"));
+  const transcriptPath = join(directory, "events.jsonl");
+  await writeFile(transcriptPath, [
+    JSON.stringify({ type: "user.message", data: { content: "hi" } }),
+    JSON.stringify({ type: "assistant.message", data: { content: "" } }),
+    JSON.stringify({ type: "assistant.message", data: { content: "All done, 12 tests passed." } }),
+    JSON.stringify({ type: "hook.start", data: { hookType: "agentStop" } }),
+  ].join("\n") + "\n");
+
+  assert.equal(await readCopilotLastAssistantMessage(transcriptPath), "All done, 12 tests passed.");
+
+  const server = await startServer((_request, response) => {
+    response.writeHead(202);
+    response.end("{}");
+  });
+  context.after(() => server.close());
+  const runtimeFilePath = await writeRuntime(server.port);
+
+  await runHook({
+    agent: "copilot",
+    eventName: "agentStop",
+    input: JSON.stringify({ sessionId: "s-tail", transcriptPath }),
+    runtimeFilePath,
+    sourcePid: 7777,
+  });
+  const received = JSON.parse((await server.request()).body) as Record<string, unknown>;
+  assert.equal(received.lastAssistantMessage, "All done, 12 tests passed.");
+  assert.equal(received.sourcePid, 7777);
 });

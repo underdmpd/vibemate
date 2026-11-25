@@ -7,6 +7,9 @@ import {
   readPositiveInteger,
   requireRecord,
   requireString,
+  sanitizeErrorSummary,
+  sanitizePromptTitle,
+  sanitizeReplySummary,
   type AdapterPermissionOutcome,
   type AdapterRuntimeOptions,
 } from "@vibemate/adapter-common";
@@ -16,16 +19,23 @@ import {
   PROTOCOL_VERSION,
   type AgentEvent,
   type PermissionRequest,
+  type SessionProblem,
   type UnifiedState,
 } from "@vibemate/protocol";
 
 const CODEX_STATES: Record<string, UnifiedState> = {
   SessionStart: "idle",
+  SessionEnd: "ended",
   UserPromptSubmit: "thinking",
+  PreModelRequest: "thinking",
+  PostModelRequest: "working",
   PreToolUse: "working",
   PostToolUse: "working",
   Stop: "completed",
+  Interrupt: "idle",
 };
+
+const RETRYABLE_CODEX_ERROR = /(connection failed|timeout|timed out|econnrefused|econnreset|etimedout|502|503|504|429|rate limit|temporarily unavailable|overloaded)/i;
 
 export type CodexAdapterResult =
   | { kind: "event"; event: AgentEvent }
@@ -47,7 +57,7 @@ export class CodexAdapter {
       return this.adaptPermission(payload);
     }
 
-    const state = CODEX_STATES[eventName];
+    let state = CODEX_STATES[eventName];
     if (!state) {
       return { kind: "ignored", reason: `unsupported Codex event: ${eventName}` };
     }
@@ -67,10 +77,31 @@ export class CodexAdapter {
       turnId = explicitTurnId ?? this.runtime.currentTurn("codex", sessionId);
     }
 
+    let title: string | undefined;
+    let summary: string | undefined;
+    let problem: SessionProblem | undefined;
+    let recoverable: boolean | undefined;
+
+    if (eventName === "UserPromptSubmit") {
+      title = sanitizePromptTitle(payload.prompt);
+    } else if (eventName === "Stop") {
+      summary = sanitizeReplySummary(payload.last_assistant_message);
+    } else if (eventName === "PostModelRequest") {
+      const status = readOptionalString(payload.status);
+      if (status === "failed") {
+        state = "failed";
+        problem = "api_failed";
+        summary = sanitizeErrorSummary(payload.error);
+        if (typeof payload.error === "string" && RETRYABLE_CODEX_ERROR.test(payload.error)) {
+          recoverable = true;
+        }
+      }
+    }
+
     const toolName = readOptionalString(payload.tool_name, payload.toolName);
     const toolInput = payload.tool_input ?? payload.toolInput;
     const cwd = this.runtime.cwd(payload.cwd);
-    const sourcePid = readPositiveInteger(payload.source_pid);
+    const sourcePid = readPositiveInteger(payload.source_pid ?? payload.sourcePid);
 
     return {
       kind: "event",
@@ -85,6 +116,10 @@ export class CodexAdapter {
         occurredAt: this.runtime.occurredAt(payload.occurred_at ?? payload.timestamp),
         ...(turnId ? { turnId } : {}),
         ...(cwd ? { cwd } : {}),
+        ...(title ? { title } : {}),
+        ...(summary ? { summary } : {}),
+        ...(problem ? { problem } : {}),
+        ...(recoverable !== undefined ? { recoverable } : {}),
         ...(toolName ? { tool: buildToolMetadata({ name: toolName, input: toolInput }) } : {}),
         ...(sourcePid ? { process: { sourcePid } } : {}),
       }),

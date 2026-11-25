@@ -17,51 +17,75 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
 /* Window padding leaves room for the drop shadow inside the transparent window. */
 #monitor { position: relative; padding: 8px; display: inline-block; }
 
-/* ---- capsule ---- */
+/* ---- status icon, shared by the capsule and the task rows ---- */
+.icon {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: white;
+}
+/* running: a ring that keeps turning */
+.icon[data-kind="running"] { border: 1.5px solid #48a68a; border-top-color: transparent; animation: spin 1.1s linear infinite; }
+.icon[data-kind="done"] { background: #48a68a; }
+.icon[data-kind="done"]::after { content: "✓"; }
+.icon[data-kind="attention"] { background: #d98a4e; }
+.icon[data-kind="attention"]::after, .icon[data-kind="error"]::after { content: "!"; }
+.icon[data-kind="error"] { background: #d9584a; }
+.icon[data-kind="idle"] { width: 7px; height: 7px; margin: 0 2.5px; background: #48a68a; }
+.icon[data-kind="offline"] { width: 7px; height: 7px; margin: 0 2.5px; background: #b3bfba; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- capsule: says one thing — who is waiting for you, or how many are still running ---- */
 .capsule {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 36px;
+  max-width: 420px;
   padding: 0 14px 0 12px;
   border: 1px solid #ffffffb8;
   border-radius: 999px;
   background: rgba(248, 251, 249, .96);
   box-shadow: 0 4px 14px #203b3224, 0 1px 2px #203b3214;
   color: inherit;
-  transition: background-color .25s, box-shadow .25s, width .2s;
+  white-space: nowrap;
+  transition: background-color .25s, box-shadow .25s;
 }
 .capsule:hover { box-shadow: 0 6px 18px #203b3230, 0 1px 2px #203b3214; }
-.capsule-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #48a68a;
-  flex: none;
-}
-.capsule-metrics { display: flex; gap: 6px; white-space: nowrap; color: #4f645c; }
-.metric { display: flex; align-items: baseline; gap: 3px; font-variant-numeric: tabular-nums; }
-.metric b { font-weight: 650; font-size: 13px; }
-/* "·" between whichever metrics are visible */
-.metric:not([hidden]) ~ .metric:not([hidden])::before { content: "·"; margin-right: 3px; color: #a3b3ac; }
-.attention b { color: #b9822f; }
-.working b { color: #2f8a72; }
-.completed b { color: #5f7895; }
-.metric[hidden] { display: none; }
-.capsule-text { color: #6e837a; white-space: nowrap; }
-.capsule-text:empty { display: none; }
+.capsule-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #4f645c; }
+.capsule-status, .capsule-extra { flex: none; }
+.capsule-status:empty, .capsule-extra:empty { display: none; }
+.capsule-extra { font-weight: 600; color: #8b9b94; }
 
-/* attention: amber, breathing */
-#monitor.has-attention .capsule {
-  background: #fbf3e3;
-  border-color: #f0e2c4;
-  animation: breathe 2.4s ease-in-out infinite;
+/* Something is waiting for the user: the device and task are named, and it stays until handled. */
+#monitor[data-kind="done"] .capsule,
+#monitor[data-kind="error"] .capsule,
+#monitor[data-kind="attention"] .capsule { font-weight: 600; }
+#monitor[data-kind="done"] .capsule-text,
+#monitor[data-kind="error"] .capsule-text,
+#monitor[data-kind="attention"] .capsule-text { color: #263a36; }
+#monitor[data-kind="done"] .capsule { background: #eaf5ef; border-color: #cfe6dc; }
+#monitor[data-kind="done"] .capsule-status { color: #2f8a72; }
+#monitor[data-kind="attention"] .capsule { background: #fbf3e3; border-color: #f0e2c4; animation: breathe 2.4s ease-in-out infinite; }
+#monitor[data-kind="attention"] .capsule-status { color: #ad7a2c; }
+/* Something went wrong: red, so it cannot be mistaken for a finished task. */
+#monitor[data-kind="error"] .capsule { background: #fdeeeb; border-color: #f3d3cd; animation: breathe-red 2.4s ease-in-out infinite; }
+#monitor[data-kind="error"] .capsule-status { color: #c0463a; }
+@keyframes breathe-red {
+  50% { box-shadow: 0 4px 22px #d9584a55, 0 1px 2px #203b3214; }
 }
-#monitor.has-attention .capsule-dot { background: #d4a45e; }
-#monitor.offline .capsule-dot { background: #b3bfba; }
 @keyframes breathe {
   50% { box-shadow: 0 4px 22px #d4a45e55, 0 1px 2px #203b3214; }
 }
+#monitor[data-mode="toast"] .capsule > * { animation: toast-in .25s ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(4px); } }
 
 /* dot: nothing to show */
 #monitor[data-mode="dot"] .capsule {
@@ -70,33 +94,14 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
   padding: 0;
   justify-content: center;
 }
-#monitor[data-mode="dot"] .capsule-metrics,
 #monitor[data-mode="dot"] .capsule-text { display: none; }
+/* quiet mode: while everything is just running, stay out of the way */
+#monitor[data-quiet][data-mode="dot"] .capsule { opacity: .55; box-shadow: 0 2px 6px #203b3218; }
+/* ...and stay still: nothing in the corner of the eye should move unless it needs the user */
+#monitor[data-quiet][data-mode="dot"] .icon { width: 7px; height: 7px; border: 0; background: #48a68a; animation: none; }
+#monitor[data-quiet][data-mode="dot"] .icon[data-kind="offline"] { background: #b3bfba; }
 
 #monitor[data-mode="expanded"] .capsule { display: none; }
-
-/* toast: a task just finished or needs the user; names the device and project */
-#monitor[data-mode="toast"] .capsule-metrics,
-#monitor[data-mode="toast"] .capsule-text { display: none; }
-.capsule-toast {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 280px;
-  white-space: nowrap;
-  font-weight: 600;
-  animation: toast-in .25s ease-out;
-}
-.capsule-toast span { overflow: hidden; text-overflow: ellipsis; }
-.capsule-toast b { font-weight: 600; color: #6e837a; }
-#monitor[data-mode="toast"] .capsule { background: #eef6f2; border-color: #cfe6dc; }
-#monitor[data-mode="toast"]:has([data-kind="failed"]) .capsule,
-#monitor[data-mode="toast"]:has([data-kind="waiting_permission"]) .capsule { background: #fbf3e3; border-color: #f0e2c4; }
-#monitor[data-mode="toast"] .capsule-dot { background: #48a68a; }
-#monitor[data-mode="toast"]:has([data-kind="failed"]) .capsule-dot,
-#monitor[data-mode="toast"]:has([data-kind="waiting_permission"]) .capsule-dot { background: #d4a45e; }
-@keyframes toast-in { from { opacity: 0; transform: translateX(4px); } }
-.task.highlight { background: #e6f3ed; }
 
 /* ---- expanded ---- */
 .expanded {
@@ -117,33 +122,62 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
   cursor: grab;
 }
 .expanded header:active { cursor: grabbing; }
+.header-right { display: flex; align-items: center; gap: 6px; }
 .connection { font-size: 10px; font-weight: 400; color: #8b9b94; }
+.pin-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b9b94;
+  transition: color .15s, background-color .15s, border-color .15s;
+}
+.pin-btn svg { transform: rotate(35deg); transition: transform .18s ease; }
+.pin-btn:hover { color: #263a36; background: #e7eeea; }
+.pin-btn[aria-pressed="true"] {
+  color: #2c7c65;
+  background: #e2f2eb;
+  border-color: #bfe0d2;
+}
+.pin-btn[aria-pressed="true"] svg { transform: rotate(0deg); }
+.pin-btn[aria-pressed="true"] .pin-body { fill: currentColor; }
 
-#tasks { max-height: 300px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d7e3dc transparent; padding: 0 6px; }
+#tasks { max-height: 400px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d7e3dc transparent; padding: 0 6px; }
+.section-label { padding: 6px 8px 2px; font-size: 10px; letter-spacing: .5px; color: #9aa9a2; }
 .task {
   display: grid;
-  grid-template-columns: 8px 1fr auto;
+  grid-template-columns: 12px 1fr auto;
   column-gap: 10px;
   align-items: center;
   padding: 8px 8px;
   border-radius: 10px;
 }
 .task + .task { margin-top: 2px; }
-.task.needs-attention { background: #faf4e9; }
-.task-state { width: 8px; height: 8px; border-radius: 50%; background: #46a28b; }
-.task.state-thinking .task-state { background: #7fa8d8; }
-.task.state-waiting_permission .task-state { background: #d4a45e; }
-.task.state-failed .task-state { background: #d9776c; }
-.task.state-completed .task-state { background: #8096af; }
-.task.offline .task-state { background: #b3bfba; }
+.task.open.kind-done { background: #eef6f2; }
+.task.open.kind-error { background: #fcefec; }
+.task.open.kind-attention { background: #faf4e9; }
+.task.highlight { box-shadow: inset 0 0 0 1px #9fd0be; }
+.task.seen, .task.offline { opacity: .6; }
+.task.can-jump { cursor: pointer; }
+.task.can-jump:hover { background: #e3efe9; opacity: 1; }
 .task-main { min-width: 0; }
 .task-title { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-meta { display: block; font-size: 10.5px; color: #8b9b94; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-side { font-size: 10.5px; color: #769087; white-space: nowrap; }
-.needs-attention .task-side { color: #ad853c; }
+.task-side, .task-jump { font-size: 10.5px; color: #769087; white-space: nowrap; }
+.kind-done.open .task-side { color: #2f8a72; }
+.kind-error.open .task-side { color: #c0463a; }
+.kind-attention.open .task-side { color: #ad853c; }
+/* hovering a row swaps its status for the action: go back to that window */
+.task-jump { display: none; font-weight: 600; color: #2c7c65; }
+.task.can-jump:hover .task-jump { display: inline; }
+.task.can-jump:hover .task-side { display: none; }
 .task-detail {
   grid-column: 2 / -1;
-  margin-top: 5px;
+  margin: 4px 0 0;
   font-size: 11px;
   color: #73857c;
   white-space: pre-line;

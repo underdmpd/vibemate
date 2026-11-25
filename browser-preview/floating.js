@@ -67,9 +67,13 @@ document.querySelectorAll('[data-notice]').forEach(button => { button.onclick = 
   const [sessionId, kind] = button.dataset.notice.split(':');
   window.simulateNotice(sessionId, kind);
 }; });
+window.vibemate.onSnapshot(value => document.querySelectorAll('[data-reminder]').forEach(button =>
+  button.classList.toggle('active', button.dataset.reminder === value.preferences.reminderMode)));
+document.querySelectorAll('[data-reminder]').forEach(button => { button.onclick = () => window.vibemate.setReminderMode(button.dataset.reminder); });
+document.getElementById('offline').onclick = () => { window.monitorDemo('working'); window.simulateOffline('pi'); };
 document.getElementById('burst').onclick = () => {
   window.monitorDemo('working');
-  [['传感器驱动', 'completed'], ['整理接口文档', 'completed'], ['运行项目测试', 'waiting_permission']]
+  [['传感器驱动', 'completed'], ['整理接口文档', 'completed'], ['运行项目测试', 'failed']]
     .forEach(([id, kind], index) => setTimeout(() => window.simulateNotice(id, kind), index * 400));
 };
 document.getElementById('pet-frame').src = '/pet';

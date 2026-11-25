@@ -7,9 +7,12 @@ import {
   MAX_PERMISSION_REQUEST_BYTES,
   MAX_SESSION_ID_LENGTH,
   MAX_SOURCE_PROFILE_LENGTH,
+  MAX_SUMMARY_LENGTH,
+  MAX_TITLE_LENGTH,
   MAX_TOOL_NAME_LENGTH,
   MAX_TOOL_SUMMARY_LENGTH,
   PROTOCOL_VERSION,
+  SESSION_PROBLEMS,
   UNIFIED_STATES,
 } from "./constants.js";
 import { sanitizeText } from "./sanitize.js";
@@ -33,9 +36,9 @@ const boundedIdSchema = z.string()
 
 const occurredAtSchema = z.string().datetime({ offset: true });
 
-function sanitizedString(maxLength: number, collapseWhitespace = true) {
+function sanitizedString(maxLength: number, collapseWhitespace = true, redactSecrets = false) {
   return z.string()
-    .transform((value) => sanitizeText(value, { maxLength, collapseWhitespace }))
+    .transform((value) => sanitizeText(value, { maxLength, collapseWhitespace, redactSecrets }))
     .pipe(z.string().min(1).max(maxLength));
 }
 
@@ -55,6 +58,9 @@ export const processMetadataSchema = z.object({
   sourcePid: z.number().int().positive(),
 }).strict();
 
+export const sessionProblemSchema = z.enum(SESSION_PROBLEMS);
+export type SessionProblem = z.infer<typeof sessionProblemSchema>;
+
 export const agentEventSchema = z.object({
   protocolVersion: z.literal(PROTOCOL_VERSION),
   eventId: boundedIdSchema,
@@ -64,6 +70,10 @@ export const agentEventSchema = z.object({
   occurredAt: occurredAtSchema,
   cwd: sanitizedString(MAX_CWD_LENGTH, false).optional(),
   turnId: boundedIdSchema.optional(),
+  title: sanitizedString(MAX_TITLE_LENGTH, true, true).optional(),
+  summary: sanitizedString(MAX_SUMMARY_LENGTH, true, true).optional(),
+  problem: sessionProblemSchema.optional(),
+  recoverable: z.boolean().optional(),
   tool: toolMetadataSchema.optional(),
   process: processMetadataSchema.optional(),
 }).strict().superRefine((event, context) => {

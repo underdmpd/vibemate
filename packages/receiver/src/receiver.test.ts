@@ -307,3 +307,64 @@ test("LAN stream pushes snapshots and returns permission decisions", async (cont
   const hookResponse = await hookResponsePromise;
   assert.equal(hookResponse.status, 200);
 });
+
+test("receiver detects exited Agent process and model-wait timeout without timing tool execution", async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), "vibemate-health-"));
+  let currentNow = Date.parse("2026-08-13T12:00:00.000Z");
+  let alive = true;
+  let id = 0;
+  const receiver = new VibeMateReceiver({
+    runtimeFilePath: join(directory, "runtime.json"),
+    healthCheckIntervalMs: 0,
+    apiTimeoutMs: 360_000,
+    isProcessAlive: () => alive,
+    adapterRuntime: {
+      now: () => new Date(currentNow),
+      generateId: () => `id-${++id}`,
+    },
+  });
+  context.after(() => receiver.stop());
+  const address = await receiver.start();
+  const baseUrl = `http://${address.host}:${address.port}`;
+  const runtime = JSON.parse(await readFile(join(directory, "runtime.json"), "utf8"));
+
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/codex", {
+    hook_event_name: "UserPromptSubmit",
+    session_id: "s-health",
+    prompt: "Run slow build\nextra details",
+    source_pid: 12345,
+  });
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/codex", {
+    hook_event_name: "PreToolUse",
+    session_id: "s-health",
+    tool_name: "Bash",
+    tool_input: { command: "npm run build" },
+  });
+
+  // 30 minutes of tool execution must NOT trigger api_timeout.
+  currentNow += 30 * 60_000;
+  assert.equal(receiver.checkSessionHealth(currentNow), 0);
+  assert.equal(receiver.sessions.list()[0]?.problem, undefined);
+  assert.equal(receiver.sessions.list()[0]?.title, "Run slow build");
+
+  // Once waiting on the model, 6 minutes triggers api_timeout.
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/codex", {
+    hook_event_name: "PreModelRequest",
+    session_id: "s-health",
+  });
+  currentNow += 360_000;
+  assert.equal(receiver.checkSessionHealth(currentNow), 1);
+  assert.equal(receiver.sessions.list()[0]?.problem, "api_timeout");
+
+  // New turn clears problem; killing process triggers process_exited.
+  currentNow += 1_000;
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/codex", {
+    hook_event_name: "UserPromptSubmit",
+    session_id: "s-health",
+    prompt: "Retry build",
+  });
+  alive = false;
+  currentNow += 5_000;
+  assert.equal(receiver.checkSessionHealth(currentNow), 1);
+  assert.equal(receiver.sessions.list()[0]?.problem, "process_exited");
+});

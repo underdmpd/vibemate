@@ -9,14 +9,51 @@ directories:
   output: release
 files:
   - apps/desktop/dist/**
+  - '!apps/desktop/dist/*.test.*'
   - apps/desktop/src/preload.cjs
   - apps/desktop/src/renderer/**
-  - packages/*/dist/**
-  - packages/*/package.json
   - package.json
-  - node_modules/**
-  - '!node_modules/cpu-features/**'
-  - '!node_modules/ssh2/lib/protocol/crypto/build/**'
+  # Bundle workspace packages as real directories under node_modules/@vibemate/* (root has no
+  # runtime dependencies, so electron-builder would otherwise omit node_modules entirely).
+  - from: packages/adapter-codex
+    to: node_modules/@vibemate/adapter-codex
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/adapter-common
+    to: node_modules/@vibemate/adapter-common
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/adapter-copilot
+    to: node_modules/@vibemate/adapter-copilot
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/core
+    to: node_modules/@vibemate/core
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/hook-installer
+    to: node_modules/@vibemate/hook-installer
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/protocol
+    to: node_modules/@vibemate/protocol
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  - from: packages/receiver
+    to: node_modules/@vibemate/receiver
+    filter: ['package.json', 'dist/**/*.js', '!dist/**/*.test.js']
+  # Runtime third-party dependencies of apps/desktop and @vibemate/* packages.
+  - from: node_modules/asn1
+    to: node_modules/asn1
+  - from: node_modules/bcrypt-pbkdf
+    to: node_modules/bcrypt-pbkdf
+  - from: node_modules/safer-buffer
+    to: node_modules/safer-buffer
+  - from: node_modules/ssh2
+    to: node_modules/ssh2
+    filter:
+      - '**/*'
+      - '!lib/protocol/crypto/build/**'
+  - from: node_modules/tweetnacl
+    to: node_modules/tweetnacl
+  - from: node_modules/ws
+    to: node_modules/ws
+  - from: node_modules/zod
+    to: node_modules/zod
 extraResources:
   - from: packages/hook-runner/dist
     to: app/hook-runner
