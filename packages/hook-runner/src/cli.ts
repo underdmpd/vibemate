@@ -9,7 +9,7 @@ import {
 } from "./index.js";
 
 function parseAgent(value: string | undefined): HookAgent | undefined {
-  return value === "codex" || value === "copilot" ? value : undefined;
+  return value === "codex" || value === "copilot" || value === "claude" || value === "antigravity" ? value : undefined;
 }
 
 function debug(error: unknown): void {
@@ -23,7 +23,7 @@ function debug(error: unknown): void {
 async function main(): Promise<void> {
   const agent = parseAgent(process.argv[2]);
   if (!agent) {
-    debug(new Error("expected agent argument: codex or copilot"));
+    debug(new Error("unknown hook agent"));
     return;
   }
 

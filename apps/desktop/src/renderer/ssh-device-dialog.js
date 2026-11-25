@@ -77,8 +77,8 @@ export function createSshDeviceDialog(api, onSaved, onFeedback) {
       const checked = await api.testSshConnection({ profile: profile(), credentials: credentials(), ...(environmentId ? { environmentId } : {}) });
       if (currentVersion !== version) return;
       verificationId = checked.verificationId; clearSecrets();
-      const agents = `Codex ${checked.agents.codex ? '已发现' : '未发现'} · Copilot ${checked.agents.copilot ? '已发现' : '未发现'}`;
-      message(`连接成功：${checked.hostname} · Linux ${checked.architecture === 'arm64' ? 'ARM64' : 'x64'}\n${agents}${!checked.agents.codex && !checked.agents.copilot ? '\n登录环境未发现 Agent，请确认该用户已安装。' : ''}`);
+      const agents = `Codex ${checked.agents.codex ? '已发现' : '未发现'} · Copilot ${checked.agents.copilot ? '已发现' : '未发现'} · Claude Code ${checked.agents.claude ? '已发现' : '未发现'} · Antigravity CLI ${checked.agents.antigravity ? '已发现' : '未发现'}`;
+      message(`连接成功：${checked.hostname} · Linux ${checked.architecture === 'arm64' ? 'ARM64' : 'x64'}\n${agents}${!Object.values(checked.agents).some(Boolean) ? '\n登录环境未发现 Agent，请确认该用户已安装。' : ''}`);
     } catch (error) { if (currentVersion === version) message(errorMessage(error), true); }
     finally { if (currentVersion === version) setBusy(false); }
   });

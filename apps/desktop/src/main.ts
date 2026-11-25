@@ -14,7 +14,7 @@ import {
   Tray,
   type IpcMainInvokeEvent,
 } from "electron";
-import { installCodexHooks, installCopilotHooks } from "@vibemate/hook-installer";
+import { updateMonitorHooks, installCodexHooks, installCopilotHooks } from "@vibemate/hook-installer";
 import { discoverSshHosts, discoverWsl } from "./environment-discovery.js";
 import { EnvironmentStore } from "./environment-store.js";
 import type { DesktopConfiguration, EnvironmentConfig } from "./environment-types.js";
@@ -45,7 +45,8 @@ async function installWindowsHooks(): Promise<void> {
     runnerPath: hookRunnerPath(), nodePath: process.execPath, platform: process.platform,
     electronAsNode: app.isPackaged,
   };
-  const results = await Promise.allSettled([installCodexHooks(options), installCopilotHooks(options)]);
+  const results = await Promise.allSettled([installCodexHooks(options), installCopilotHooks(options),
+    updateMonitorHooks("claude", "install", options), updateMonitorHooks("antigravity", "install", options)]);
   if (results.every((result) => result.status === "rejected")) {
     const first = results[0];
     throw first?.status === "rejected" ? first.reason : new Error("Agent Hook 安装失败");
@@ -269,54 +270,8 @@ ipcMain.on("vibemate:preview-drag", (event, phase: unknown, dx: unknown, dy: unk
     || typeof dx !== "number" || typeof dy !== "number" || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
   reminder.drag(phase, dx, dy);
 });
-ipcMain.handle("vibemate:set-codex-approvals", async (_event, environmentId: unknown, enabled: unknown) => {
-  if (typeof environmentId !== "string" || typeof enabled !== "boolean") throw new TypeError("invalid approval setting");
-  const environment = configuration.environments.find(item => item.environmentId === environmentId);
-  if (!environment) throw new Error("environment not found");
-  await receiverManager.setCodexApprovals(environmentId, enabled);
-  const previous = environment.codexApprovalsEnabled === true;
-  environment.codexApprovalsEnabled = enabled;
-  try { await environmentStore.save(configuration); }
-  catch (error) {
-    environment.codexApprovalsEnabled = previous;
-    await receiverManager.setCodexApprovals(environmentId, previous);
-    throw error;
-  }
-  receiverManager.setConfiguration(configuration);
-  return getSnapshot();
-});
 ipcMain.on("vibemate:show-control", showControlWindow);
 ipcMain.on("vibemate:quit", () => app.quit());
-ipcMain.handle(
-  "vibemate:submit-decision",
-  (_event, identity: unknown, decision: unknown) => {
-    if (
-      !identity
-      || typeof identity !== "object"
-      || !("environmentId" in identity)
-      || !("requestId" in identity)
-      || !("sourceProfile" in identity)
-      || !("agent" in identity)
-      || !("sessionId" in identity)
-      || typeof identity.environmentId !== "string"
-      || typeof identity.requestId !== "string"
-      || typeof identity.sourceProfile !== "string"
-      || (identity.agent !== "codex" && identity.agent !== "copilot")
-      || typeof identity.sessionId !== "string"
-      || (decision !== "allow" && decision !== "deny")
-    ) {
-      throw new TypeError("invalid permission decision");
-    }
-    return receiverManager.submitDecision({
-      environmentId: identity.environmentId,
-      requestId: identity.requestId,
-      sourceProfile: identity.sourceProfile,
-      agent: identity.agent,
-      sessionId: identity.sessionId,
-    }, decision);
-  },
-);
-
 ipcMain.handle("vibemate:scan-environments", async () => {
   const localDevice = configuration.devices.find((device) => device.kind === "local");
   if (!localDevice) throw new Error("local device is missing");
@@ -519,7 +474,7 @@ ipcMain.handle("vibemate:focus-session", async (event, identity: unknown) => {
     || !("agent" in identity)
     || !("sessionId" in identity)
     || typeof identity.environmentId !== "string"
-    || (identity.agent !== "codex" && identity.agent !== "copilot")
+    || (identity.agent !== "codex" && identity.agent !== "copilot" && identity.agent !== "claude" && identity.agent !== "antigravity")
     || typeof identity.sessionId !== "string"
   ) {
     throw new TypeError("invalid session identity");
@@ -609,24 +564,6 @@ app.on("before-quit", (event) => {
   stopping = true;
   quitting = true;
   void (async () => {
-    const pendingCount = getSnapshot().pendingPermissions.length;
-    if (pendingCount > 0) {
-      const answer = await dialog.showMessageBox({
-        type: "warning",
-        title: "仍有待审批操作",
-        message: `还有 ${pendingCount} 个权限请求等待处理，确定退出 VibeMate 吗？`,
-        detail: "退出后这些远程审批将不再由桌面端处理。",
-        buttons: ["继续使用", "退出"],
-        defaultId: 0,
-        cancelId: 0,
-      });
-      if (answer.response === 0) {
-        stopping = false;
-        quitting = false;
-        showControlWindow();
-        return;
-      }
-    }
     try {
       await pet.save();
     } catch (error) {

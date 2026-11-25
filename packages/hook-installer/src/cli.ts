@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import {
+  updateMonitorHooks,
   installCodexHooks,
   installCopilotHooks,
   uninstallCodexHooks,
@@ -33,8 +34,17 @@ async function main(): Promise<void> {
   const target = action === "install"
     ? process.argv[2] === "install" ? process.argv[3] ?? "all" : process.argv[2] ?? "all"
     : process.argv[3] ?? "all";
+  if (target === "all" || target === "claude" || target === "antigravity") {
+    for (const agent of ["claude", "antigravity"] as const) {
+      if (target === "all" || target === agent) {
+        const result = await updateMonitorHooks(agent, action);
+        process.stdout.write(`${agent}: ${result.changed ? "updated" : "unchanged"} ${result.configPath}\n`);
+      }
+    }
+    if (target !== "all") return;
+  }
   if (target !== "all" && target !== "codex" && target !== "copilot") {
-    throw new Error("usage: vibemate-hooks [install|uninstall] [all|codex|copilot]");
+    throw new Error("usage: vibemate-hooks [install|uninstall] [all|codex|copilot|claude|antigravity]");
   }
   if (action === "install") {
     if (target === "all" || target === "codex") {

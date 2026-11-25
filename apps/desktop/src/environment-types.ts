@@ -55,7 +55,7 @@ export interface SshConnectionTest {
   verificationId: string;
   hostname: string;
   architecture: "x64" | "arm64";
-  agents: { codex: boolean; copilot: boolean };
+  agents: { codex: boolean; copilot: boolean; claude?: boolean; antigravity?: boolean };
 }
 
 export type EnvironmentConfig = WindowsEnvironment | WslEnvironment | SshEnvironment;

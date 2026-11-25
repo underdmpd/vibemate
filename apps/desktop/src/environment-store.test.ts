@@ -23,7 +23,7 @@ test("environment settings persist without transport secrets", async () => {
   assert.equal((await store.load()).environments[0]?.codexApprovalsEnabled, false);
   configuration.environments[0]!.codexApprovalsEnabled = true;
   await store.save(configuration);
-  assert.equal((await store.load()).environments[0]?.codexApprovalsEnabled, true);
+  assert.equal((await store.load()).environments[0]?.codexApprovalsEnabled, false);
 });
 
 test("mergeDiscovered deduplicates WSL distributions and SSH aliases", () => {

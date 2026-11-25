@@ -32,7 +32,6 @@ let emptySince = Date.now();
 let toastId; // session that was just announced; it leads the capsule while the toast lasts
 let toastTimer;
 let highlightId;
-const pendingCommands = new Set();
 // session key -> the stop the user has already looked at. A new turn ending un-sees it again.
 const seen = new Map();
 // environmentId -> when it was first seen disconnected (used when the host does not say).
@@ -116,12 +115,11 @@ async function goBack(item) {
   catch { $('feedback').textContent = '没能切到那个窗口，请手动回到对应终端。'; }
 }
 
-function buildTask(item, value, permissions) {
+function buildTask(item, value) {
   const { session, key } = item;
-  const request = permissions.find(p => identity(p) === key);
   // A finished task on a device that has since gone away: nothing to go back to.
   const offline = item.offline && !item.problem;
-  const agentName = session.agent === 'codex' ? 'Codex' : 'Copilot';
+  const agentName = ({ codex: 'Codex', copilot: 'Copilot', claude: 'Claude Code', antigravity: 'Antigravity' })[session.agent];
 
   const card = document.createElement('div');
   card.className = `task kind-${item.kind}${item.open ? ' open' : ''}${item.seen ? ' seen' : ''}${offline ? ' offline' : ''}${key === highlightId ? ' highlight' : ''}`;
@@ -149,27 +147,7 @@ function buildTask(item, value, permissions) {
     card.onclick = event => { if (!event.target.closest('button')) goBack(item); };
   }
 
-  if (request && request.agent === 'codex' && !offline) {
-    const detail = document.createElement('p'); detail.className = 'task-detail';
-    detail.textContent = request.tool.summary ?? request.tool.name;
-    const actions = document.createElement('div'); actions.className = 'approval-actions';
-    for (const [decision, label] of [['deny', '拒绝'], ['allow', '允许本次']]) {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.className = decision;
-      button.disabled = pendingCommands.has(request.requestId);
-      button.onclick = async () => {
-        pendingCommands.add(request.requestId);
-        actions.querySelectorAll('button').forEach(b => { b.disabled = true; });
-        try {
-          const result = await api.submitDecision({ environmentId: request.environmentId, requestId: request.requestId,
-            sourceProfile: request.sourceProfile, agent: request.agent, sessionId: request.sessionId }, decision);
-          $('feedback').textContent = result === 'accepted' ? '' : '请求已失效，请查看最新状态。';
-        } catch { $('feedback').textContent = '未能提交，请检查连接或回原终端处理。'; }
-        finally { pendingCommands.delete(request.requestId); render(snapshot); }
-      };
-      actions.append(button);
-    }
-    card.append(detail, actions);
-  } else if (item.kind !== 'running' && !offline) {
+  if (item.kind !== 'running' && !offline) {
     // What the agent said when it stopped; without it, at least say where to look.
     const text = item.problem ? session.summary ?? problemHint[item.problem]
       : session.summary ?? (session.state === 'failed' ? '任务遇到问题，请回原终端查看原因。' : '');
@@ -189,7 +167,6 @@ function render(value) {
       if (typeof v === 'string') seen.set(k, v);
     }
   }
-  const permissions = value.pendingPermissions ?? [];
   const items = classify(value);
   if (items.length > 0) emptySince = Date.now();
 
@@ -228,7 +205,7 @@ function render(value) {
     const visible = group.slice(0, Math.max(0, MAX_ROWS - rows));
     if (!visible.length) continue;
     if (open.length && (running.length || settled.length)) nodes.push(sectionLabel(label));
-    nodes.push(...visible.map(item => buildTask(item, value, permissions)));
+    nodes.push(...visible.map(item => buildTask(item, value)));
     rows += visible.length;
   }
   if (items.length > rows) {
@@ -315,7 +292,7 @@ document.body.addEventListener('mouseenter', () => { hovered = true; render(snap
 document.body.addEventListener('mouseleave', () => { hovered = false; render(snapshot); });
 // Clicking outside the expanded window collapses it unless the user pinned it open.
 window.addEventListener('blur', () => {
-  if (expanded && !pinnedExpanded && pendingCommands.size === 0) setExpanded(false);
+  if (expanded && !pinnedExpanded) setExpanded(false);
 });
 updatePinButton();
 

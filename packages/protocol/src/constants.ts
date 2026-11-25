@@ -11,7 +11,7 @@ export const MAX_TOOL_SUMMARY_LENGTH = 512;
 export const MAX_TITLE_LENGTH = 60;
 export const MAX_SUMMARY_LENGTH = 120;
 
-export const AGENT_IDS = ["codex", "copilot"] as const;
+export const AGENT_IDS = ["codex", "copilot", "claude", "antigravity"] as const;
 
 export const SESSION_PROBLEMS = [
   "api_failed",

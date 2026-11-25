@@ -100,8 +100,7 @@ Receiver 不是开机服务，也不支持无人值守监控。
 请求也直接回退 Agent 原生审批。事件采集仍可继续，不依赖 Receiver 进程是否退出。
 重新连接可以处理新请求，但不能恢复已回退的旧审批。计时依赖 Receiver 事件循环正常
 运行；Receiver 卡死时仍由 Hook 自身超时兜底，目前权限 Hook 的默认上限为 9 分钟。
-默认关闭 Codex 桌面审批；用户按环境开启后，客户端通过已认证的 WebSocket 同步设置，
-重连时重新同步。关闭设置立即释放待审批请求。仅在线但未开启审批的连接不算可用审批端。
+桌面客户端仅监控会话。Codex 与 Copilot 的权限均由原终端处理。
 独立 HTTP 开发观察器也默认关闭审批，可通过 `VIBEMATE_CODEX_APPROVALS=1` 显式启用。
 
 Copilot 不使用阻塞式权限 Hook。安装器迁移时只移除自身旧 `permissionRequest` 条目，
@@ -117,7 +116,7 @@ Copilot 权限调用直接返回无决定。通知只更新会话的等待权限
 - 项目名取会话最近事件 `cwd` 的最后一段，聚合快照中以 `project` 字段提供。
 - 悬浮提醒窗是日常常驻界面：默认是一枚胶囊，只显示数量；收到提醒时进入 `toast`
   模式 6 秒（悬停时保持），显示“环境 · 项目 状态”，多条合并为“+N”；点击展开为
-  最多 5 条的精简任务列表，刚提醒的任务高亮，行内可审批 Codex；鼠标移开 3 秒收回。
+  最多 5 条的精简任务列表，刚提醒的任务高亮；鼠标移开 3 秒收回。
 - 系统通知使用 Electron `Notification`，Windows 上通过与安装包一致的
   AppUserModelID 显示；点击后展开悬浮窗。可在设置页关闭。
 - 无任务持续 30 秒后胶囊缩成小圆点；拖到屏幕左右边缘会吸附，提示期间自动滑出。
@@ -127,7 +126,8 @@ Copilot 权限调用直接返回无决定。通知只更新会话的等待权限
 ## 构建与交付
 
 `npm run dist:windows` 会先编译代码、生成 Linux 单文件工具、打包 Node 22 的 Linux
-x64/arm64 运行时，再使用 electron-builder 生成 unsigned NSIS x64/arm64 安装包。
+x64/arm64 运行时，再使用 electron-builder 分别生成 Windows x64/arm64 免安装 ZIP，
+作为 GitHub Release 的分发文件。用户完整解压后运行 `VibeMate.exe`。
 Linux payload 只部署到用户明确启用的环境的 `~/.vibemate`。
 
 ## 安全与明确不做

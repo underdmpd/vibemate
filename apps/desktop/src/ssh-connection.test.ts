@@ -32,7 +32,7 @@ test("password testing confirms a real host key and probes without deploying or 
   const checked = await service.test(fixture.input, { password: "test device password" });
   assert.deepEqual(identities, [fixture.fingerprint]);
   assert.equal(checked.hostname, "test-pi"); assert.equal(checked.architecture, "arm64");
-  assert.deepEqual(checked.agents, { codex: false, copilot: true });
+  assert.deepEqual(checked.agents, { codex: false, copilot: true, claude: false, antigravity: false });
   assert.equal(fixture.commands.length, 1);
   assert.equal(fixture.commands[0]?.includes(".vibemate"), false);
   assert.equal(fixture.forwards.length, 0);

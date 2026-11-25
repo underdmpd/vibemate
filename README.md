@@ -4,7 +4,7 @@
 
 **哪台设备的哪个 AI 编码任务停了，它会一直告诉你——点一下就回到那个窗口。**
 
-多设备 AI 编码任务悬浮提醒窗 · 汇总 Windows 本机、WSL 与 SSH Linux / 树莓派上的 **Codex CLI** 与 **GitHub Copilot CLI** 会话。
+多设备 AI 编码任务悬浮提醒窗 · 汇总 Windows 本机、WSL 与 SSH Linux / 树莓派上的 **Codex CLI**、**GitHub Copilot CLI**、**Claude Code** 与 **Antigravity** 会话。
 
 [![Agents](https://img.shields.io/badge/Agents-Codex%20CLI%20%7C%20Copilot%20CLI-2c7c65?style=flat-square)](#支持的环境与-agent)
 [![Platform](https://img.shields.io/badge/Desktop-Windows%20x64%20%2F%20ARM64-0078D6?style=flat-square)](#安装与使用)
@@ -66,7 +66,7 @@ VibeMate 把所有设备上的编码任务收敛成一枚轻量、不打扰的�
 
 ### 5. 安全与隐私边界
 
-- **权限链路故障安全**：默认仅监控，沿用 Agent 原生授权；即使按环境开启 Codex 桌面审批，任何超时、断线或服务退出都会回退原生流程，绝不自动 Allow 或自动 Deny。
+- **权限处理**：Codex 与 Copilot 的授权请求均在原终端处理。
 - **最小化采集与脱敏**：不采集完整提示词、对话转录、文件内容或命令输出；仅采集经控制字符清理、密钥脱敏与严格限长的任务标题（≤60 字）与停下/错误摘要（≤120 字）。
 - **SSH 凭证不落盘**：通过界面添加远程设备时使用内置 SSH 客户端，密码与密钥口令仅保存在当次运行内存中，不写入配置文件；首次连接强制核对主机指纹。
 
@@ -80,26 +80,31 @@ VibeMate 把所有设备上的编码任务收敛成一枚轻量、不打扰的�
 | --- | --- |
 | **桌面端** | Windows 10 / 11（`x64`、`arm64`） |
 | **被监控环境** | Windows 本机、WSL 发行版、独立 Linux / 树莓派（SSH，支持 `x64` 与 `arm64`） |
-| **编码 Agent** | **Codex CLI**、**GitHub Copilot CLI** |
+| **编码 Agent** | **Codex CLI**、**GitHub Copilot CLI**、**Claude Code**、**Antigravity** |
 
 ---
 
+Claude Code 通过用户设置中的生命周期 Hook 接入；Antigravity App、CLI 和 IDE 使用全局 `~/.gemini/config/hooks.json`。需要支持这些 Hook 的版本。开启环境监控后重新打开 Agent 会话即可。
+
 ## 安装与使用
 
-### 正式安装包（推荐）
+### 免安装压缩包（推荐）
 
 无需在 Windows 本机或远程设备上预先安装 Node.js：
 
-1. 下载并运行 Windows 安装包 `VibeMate-<version>-<arch>-setup.exe`。
-2. 首次启动后，点击扫描 Windows 本机与 WSL，勾选需要监控的环境并确认授权。
-3. 重启正在运行中的 Codex / Copilot 会话，让新注册的 Hook 生效。
+1. 从 [GitHub Releases](https://github.com/ericy9/vibemate/releases) 下载 `VibeMate-<version>-windows-<arch>.zip`，普通 Intel / AMD 电脑选择 `x64`，Windows ARM 设备选择 `arm64`。
+2. 将压缩包完整解压到固定目录，双击其中的 `VibeMate.exe`；请保留同目录下的全部文件，不要在压缩包内直接运行。
+3. 首次启动后，点击扫描 Windows 本机与 WSL，勾选需要监控的环境并确认授权。
+4. 重启正在运行中的 对应 Agent 的会话，让新注册的 Hook 生效。
+
+免安装版仍会在用户目录保存设置，并在你授权后注册 Agent Hook。升级时先退出 VibeMate，再将新版本完整解压到原目录。
 
 ### 接入 Linux / 树莓派设备
 
 1. 在设置页点击 **添加设备**，填写设备名称、主机地址、SSH 端口与用户名（也可直接从已有 `~/.ssh/config` 别名扫描添加）。
 2. 选择密码登录或私钥文件登录，点击 **测试连接** 并核对首次连接的主机指纹（测试为只读探针，不会修改远端文件）。
 3. 点击 **安装并开始监控**，客户端会自动部署自带 Node 运行时、Receiver 与 Agent Hook。
-4. 重启远端设备上的 Codex / Copilot 会话即可在桌面悬浮窗看到实时任务。
+4. 重启远端设备上的 对应 Agent 的会话即可在桌面悬浮窗看到实时任务。
 
 ---
 
@@ -107,7 +112,7 @@ VibeMate 把所有设备上的编码任务收敛成一枚轻量、不打扰的�
 
 ```text
 Windows / WSL / SSH Linux / 树莓派
-  Codex CLI / Copilot CLI
+  Codex CLI / Copilot CLI / Claude Code / Antigravity
         │  (原生生命周期 Hook)
         ▼
   hook-runner ──► loopback Receiver (127.0.0.1)
@@ -157,9 +162,12 @@ node browser-preview/monitor-server.mjs
 npm run build:linux-payload
 npm run start:desktop
 
-# 构建 Windows 安装包（x64 + arm64，输出到 release/）
+# 构建 Windows 免安装 ZIP（x64 + arm64，输出到 release/）
 npm run dist:windows
 ```
+
+GitHub Release 上传 `release/VibeMate-<version>-windows-x64.zip` 和
+`release/VibeMate-<version>-windows-arm64.zip`，分别供两种架构下载。
 
 ---
 

@@ -2,7 +2,7 @@ appId: com.dfrobot.vibemate
 productName: VibeMate
 extraMetadata:
   main: apps/desktop/dist/main.js
-artifactName: VibeMate-${version}-${arch}-setup.${ext}
+artifactName: VibeMate-${version}-windows-${arch}.${ext}
 # SSH2 has a JavaScript fallback. Keep optional host-built native accelerators out of cross-platform packages.
 npmRebuild: false
 directories:
@@ -63,11 +63,6 @@ extraResources:
     to: linux-payload
 win:
   target:
-    - target: nsis
+    - target: zip
       arch: [x64, arm64]
   signAndEditExecutable: false
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true
-  createStartMenuShortcut: true

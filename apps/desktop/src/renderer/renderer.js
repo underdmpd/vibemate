@@ -11,24 +11,6 @@ const addSshButton = document.querySelector("#add-ssh");
 const feedback = document.querySelector("#settings-feedback");
 const sshDialog = createSshDeviceDialog(window.vibemate, render, message => { feedback.textContent = message; });
 
-function addApprovalSettings(main, environment) {
-  const approvalLabel = document.createElement("label");
-  const approval = document.createElement("input");
-  approval.type = "checkbox";
-  approval.checked = environment.codexApprovalsEnabled === true;
-  approval.addEventListener("change", async () => {
-    approval.disabled = true;
-    try { await window.vibemate.setCodexApprovals(environment.environmentId, approval.checked); }
-    catch (error) { approval.checked = environment.codexApprovalsEnabled === true; window.alert(error.message); }
-    finally { approval.disabled = false; }
-  });
-  approvalLabel.append(approval, " 在 VibeMate 中审批 Codex（默认关闭）");
-  const copilotHint = document.createElement("span");
-  copilotHint.textContent = "Copilot 仅监控与提醒，权限请在原终端处理。";
-  main.append(approvalLabel, copilotHint);
-
-}
-
 function createEnvironmentRow(environment) {
   const row = document.createElement("div");
   row.className = "list-row environment-row";
@@ -40,7 +22,6 @@ function createEnvironmentRow(environment) {
   const status = { stopped: "未启动", starting: "启动中", connected: "已连接", disconnected: "已断开", error: "启动失败" }[environment.status] ?? environment.status;
   detail.textContent = `${kind} · ${status}${environment.error ? ` · ${environment.error}` : ""}`;
   main.append(title, detail);
-  addApprovalSettings(main, environment);
   const action = document.createElement("button");
   action.type = "button";
   action.className = "compact";

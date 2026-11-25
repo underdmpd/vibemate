@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { AdapterRuntime } from "@vibemate/adapter-common";
 import { CodexAdapter } from "@vibemate/adapter-codex";
 import { type AdapterRuntimeOptions } from "@vibemate/adapter-common";
 import { CopilotAdapter } from "@vibemate/adapter-copilot";
@@ -104,6 +105,7 @@ export class VibeMateReceiver {
     // Standalone HTTP observers retain their existing decision workflow.
     this.permissions.setControllerAvailable(!this.lanOptions && options.codexApprovalsEnabled === true);
     this.router = new ReceiverRouter({
+      monitorRuntime: new AdapterRuntime(adapterOptions),
       sessions: this.sessions,
       permissions: this.permissions,
       codex: this.codex,

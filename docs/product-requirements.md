@@ -44,13 +44,13 @@ VibeMate 应减少用户反复检查每个终端的需要，同时不能在用�
   让 Codex/Copilot 回到原生权限流程，不得造成长期阻塞。
 - 卸载 VibeMate 时，应自动移除 VibeMate 自己注册的 Hook 和启动入口，同时保留
   用户已有配置，并提供备份与清理结果。
-- Receiver、Hook runner 和安装器应随正式安装包交付，不应要求用户预先安装
+- Receiver、Hook runner 和安装器应随正式发布的免安装 ZIP 交付，不应要求用户预先安装
   Node.js、克隆仓库或从源码构建 VibeMate。
 - 上述约束属于产品必须满足的验收条件。
 
 ### 2.2 首次安装与环境接入
 
-- Windows 用户应通过正式安装包完成桌面应用安装，安装完成后进入首次启动向导。
+- Windows 用户应下载对应 x64/ARM64 的免安装 ZIP，完整解压后运行桌面应用，进入首次启动向导。
 - 首次启动向导应自动检测 Windows 本机 Agent 和 WSL 发行版中的受支持 Agent，
   展示检测结果并在用户确认后安装 Receiver 与 Hook。
 - 自动发现本身不得修改任何 Agent 配置；安装 Hook、部署 Receiver 和连接远程设备
@@ -263,7 +263,7 @@ Agent 权限 Hook
 
 ### 第二阶段：安装与配置
 
-- Windows x64/ARM64 正式安装包、自动更新和完整卸载清理
+- Windows x64/ARM64 免安装 ZIP、更新体验和完整移除清理
 - 面向非开发者的首次启动向导
 - 用户确认后的一键 Receiver/Hook 部署、连接测试和一键修复
 

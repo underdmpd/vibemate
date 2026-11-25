@@ -52,6 +52,17 @@ test("receiver binds loopback, writes runtime discovery, and isolates sessions",
     sessionId: "same-session",
   })).status, 202);
 
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/claude/Stop", {
+    session_id: "same-session", last_assistant_message: "Finished",
+  });
+  const google = { conversationId: "same-session", workspacePaths: ["/workspace"], executionNum: 1 };
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/antigravity/PreInvocation", google);
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/antigravity/Stop", { ...google, fullyIdle: false });
+  assert.equal(receiver.sessions.list().find(s => s.agent === "antigravity")?.state, "thinking");
+  await postJson(baseUrl, runtime.authToken, "/v1/hooks/antigravity/Stop", { ...google, fullyIdle: true });
+  assert.equal(receiver.sessions.list().find(s => s.agent === "antigravity")?.state, "completed");
+  assert.equal(receiver.sessions.list().find(s => s.agent === "claude")?.summary, "Finished");
+
   assert.equal((await fetch(`${baseUrl}/v1/snapshot`)).status, 401);
   const snapshotResponse = await fetch(`${baseUrl}/v1/snapshot`, {
     headers: { "x-vibemate-token": runtime.authToken },
@@ -59,7 +70,7 @@ test("receiver binds loopback, writes runtime discovery, and isolates sessions",
   const snapshot = await snapshotResponse.json() as {
     sessions: unknown[];
   };
-  assert.equal(snapshot.sessions.length, 2);
+  assert.equal(snapshot.sessions.length, 4);
 });
 
 test("permission decision returns to the exact waiting Codex request", async (context) => {

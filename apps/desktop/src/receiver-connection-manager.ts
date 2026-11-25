@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { parsePermissionDecision } from "@vibemate/protocol";
 import { VibeMateReceiver } from "@vibemate/receiver";
 import type { DesktopConfiguration, AggregatedSnapshot, EnvironmentConfig, EnvironmentStatus } from "./environment-types.js";
 import { projectName } from "./task-notifier.js";
@@ -23,14 +22,6 @@ interface Connection {
   disconnectedAt?: string | undefined;
   manuallyStarted: boolean;
   unsubscribe?: (() => void) | undefined;
-}
-
-export interface PermissionIdentity {
-  environmentId: string;
-  requestId: string;
-  sourceProfile: string;
-  agent: "codex" | "copilot";
-  sessionId: string;
 }
 
 export class ReceiverConnectionManager {
@@ -78,7 +69,6 @@ export class ReceiverConnectionManager {
       const client = new RemoteReceiverClient({
         url: endpoint.url,
         authToken: endpoint.authToken,
-        codexApprovalsEnabled: environment.codexApprovalsEnabled === true,
         onError: this.onError,
       });
       connection.endpoint = endpoint;
@@ -121,9 +111,6 @@ export class ReceiverConnectionManager {
     if (endpoint) await endpoint.stop();
   }
 
-  async setCodexApprovals(environmentId: string, enabled: boolean): Promise<void> {
-    await this.connections.get(environmentId)?.client?.setCodexApprovals(enabled);
-  }
 
   async stopAll(timeoutMs = 3_000): Promise<void> {
     const stops = [...this.connections.keys()].map((id) => this.stop(id).catch(this.onError));
@@ -172,24 +159,6 @@ export class ReceiverConnectionManager {
       preferences: structuredClone(this.configuration.preferences),
       onboardingCompleted: this.configuration.onboardingCompleted,
     };
-  }
-
-  async submitDecision(identity: PermissionIdentity, decision: "allow" | "deny") {
-    const connection = this.connections.get(identity.environmentId);
-    const request = connection?.client?.getSnapshot().pendingPermissions.find((item) => (
-      item.requestId === identity.requestId && item.sourceProfile === identity.sourceProfile
-      && item.agent === identity.agent && item.sessionId === identity.sessionId
-    ));
-    if (!request || !connection?.client) return "not_found" as const;
-    return connection.client.submitDecision(parsePermissionDecision({
-      protocolVersion: 1,
-      requestId: request.requestId,
-      sourceProfile: request.sourceProfile,
-      agent: request.agent,
-      sessionId: request.sessionId,
-      decision,
-      decidedAt: new Date().toISOString(),
-    }));
   }
 
   private notify(): void {

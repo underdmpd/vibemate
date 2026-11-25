@@ -5,10 +5,6 @@ contextBridge.exposeInMainWorld("vibemate", {
   hidePreview: () => ipcRenderer.send("vibemate:hide-preview"),
   reportPreviewState: (state) => ipcRenderer.send("vibemate:preview-state", state),
   dragPreview: (phase, dx, dy) => ipcRenderer.send("vibemate:preview-drag", phase, dx, dy),
-  setCodexApprovals: (environmentId, enabled) => ipcRenderer.invoke("vibemate:set-codex-approvals", environmentId, enabled),
-  submitDecision: (identity, decision) => (
-    ipcRenderer.invoke("vibemate:submit-decision", identity, decision)
-  ),
   scanEnvironments: () => ipcRenderer.invoke("vibemate:scan-environments"),
   setEnvironmentEnabled: (environmentId, enabled) => (
     ipcRenderer.invoke("vibemate:set-environment-enabled", environmentId, enabled)

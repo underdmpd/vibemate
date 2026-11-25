@@ -130,7 +130,7 @@ export class TaskNotifier {
   }
 }
 
-const AGENT_NAMES: Record<string, string> = { codex: "Codex", copilot: "Copilot" };
+const AGENT_NAMES: Record<string, string> = { codex: "Codex", copilot: "Copilot", claude: "Claude Code", antigravity: "Antigravity" };
 const KIND_TEXT: Record<NoticeKind, string> = {
   completed: "完成了",
   failed: "失败了",

@@ -23,7 +23,6 @@ const CODEX_EVENTS = [
   "PreModelRequest",
   "PostModelRequest",
   "PreToolUse",
-  "PermissionRequest",
   "PostToolUse",
   "Stop",
   "Interrupt",
@@ -248,8 +247,7 @@ function countStatus(
   result[status]++;
 }
 
-function removeLegacyCopilotPermissions(hooks: JsonObject, configPath: string): void {
-  // Upgrade only our entries in the dedicated file; preserve third-party policies.
+function removeLegacyPermissionHooks(hooks: JsonObject, configPath: string): void {
   for (const legacyEvent of ["permissionRequest", "PermissionRequest"]) {
     const entries = hooks[legacyEvent];
     if (entries === undefined) continue;
@@ -281,7 +279,7 @@ export async function installCodexHooks(
     added: 0,
     updated: 0,
     unchanged: 0,
-    permissionInstalled: true,
+    permissionInstalled: false,
     changed: false,
     warnings: [],
   };
@@ -292,6 +290,7 @@ export async function installCodexHooks(
     options.electronAsNode,
   );
 
+  removeLegacyPermissionHooks(hooks, configPath);
   for (const event of CODEX_EVENTS) {
     const existing = hooks[event];
     if (existing !== undefined && !Array.isArray(existing)) {
@@ -301,11 +300,7 @@ export async function installCodexHooks(
       hooks: [{
         type: "command",
         ...commands,
-        timeout: event === "PermissionRequest"
-          ? 600
-          : event === "SessionEnd" || event === "Interrupt"
-            ? 3
-            : 30,
+        timeout: event === "SessionEnd" || event === "Interrupt" ? 3 : 30,
       }],
     };
     const reconciled = reconcileEntry(
@@ -343,7 +338,7 @@ export async function installCopilotHooks(
     throw new Error(`${configPath}: unsupported hook config version`);
   }
   const hooks = ensureHooks(file.value, configPath);
-  removeLegacyCopilotPermissions(hooks, configPath);
+  removeLegacyPermissionHooks(hooks, configPath);
   const result: InstallResult = {
     configPath,
     added: 0,
@@ -455,3 +450,57 @@ export const hookEvents = {
   codex: CODEX_EVENTS,
   copilot: COPILOT_EVENTS,
 } as const;
+
+/** Register passive lifecycle handlers in each host's native config format. */
+export async function updateMonitorHooks(agent: "claude" | "antigravity", action: "install" | "uninstall", options: InstallOptions = {}) {
+  const home = options.homeDir ?? homedir();
+  const configPath = agent === "claude"
+    ? join(process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"), "settings.json")
+    : join(home, ".gemini", "config", "hooks.json");
+  const file = await readJsonObject(configPath, {});
+  const original = JSON.stringify(file.value);
+  if (!file.exists && action === "uninstall") return { changed: false, configPath };
+  const events = agent === "claude"
+    ? ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "StopFailure"]
+    : ["SessionStart", "PreInvocation", "PostInvocation", "Stop"];
+  const groupKey = "vibemate-monitor";
+  const prior = agent === "claude" ? file.value.hooks : file.value[groupKey];
+  if (prior !== undefined && !isObject(prior)) throw new Error(`${configPath}: invalid hook group`);
+  const group = prior ?? {};
+  function owned(entry: unknown): boolean {
+    if (commandContainsMarker(entry)) return true;
+    if (!isObject(entry) || typeof entry.command !== "string") return false;
+    const encoded = /^powershell\.exe -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/=]+)$/.exec(entry.command);
+    return !!encoded && Buffer.from(encoded[1]!, "base64").toString("utf16le").endsWith(` --${MARKER}`);
+  }
+  const executables = action === "install" ? await resolveExecutables(options) : undefined;
+  for (const event of events) {
+    const entries = group[event] ?? [];
+    if (!Array.isArray(entries)) throw new Error(`${configPath}: invalid ${event} hooks`);
+    const retained = entries.flatMap((entry: unknown): unknown[] => {
+      if (owned(entry)) return [];
+      if (!isObject(entry) || !Array.isArray(entry.hooks)) return [entry];
+      const hooks = entry.hooks.filter(hook => !owned(hook));
+      return hooks.length === entry.hooks.length ? [entry] : hooks.length ? [{ ...entry, hooks }] : [];
+    });
+    if (executables) {
+      const { nodePath, runnerPath } = executables;
+      let command = `${options.electronAsNode ? "ELECTRON_RUN_AS_NODE=1 " : ""}${shellQuote(nodePath)} ${shellQuote(runnerPath)} ${agent} ${event} --${MARKER}`;
+      if ((options.platform ?? process.platform) === "win32") {
+        const script = `${options.electronAsNode ? "$env:ELECTRON_RUN_AS_NODE='1'; " : ""}& ${powershellQuote(nodePath)} ${powershellQuote(runnerPath)} ${agent} ${event} --${MARKER}`;
+        // Keep paths out of the host shell's quoting rules. The marker argument identifies our handler.
+        command = `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${Buffer.from(script, "utf16le").toString("base64")}`;
+      }
+      const handler = { type: "command", command };
+      retained.push(agent === "claude" ? { hooks: [handler] } : handler);
+    }
+    if (retained.length) group[event] = retained;
+    else delete group[event];
+  }
+  const key = agent === "claude" ? "hooks" : groupKey;
+  if (Object.keys(group).length) file.value[key] = group;
+  else delete file.value[key];
+  const changed = original !== JSON.stringify(file.value);
+  if (changed) await writeJsonAtomic(configPath, file);
+  return { configPath, changed };
+}

@@ -13,6 +13,8 @@ printf 'arch='; uname -m
 printf 'hostname='; hostname
 if command -v tar >/dev/null 2>&1; then printf 'tar=yes\\n'; fi
 if command -v codex >/dev/null 2>&1; then printf 'codex=yes\\n'; fi
+if command -v claude >/dev/null 2>&1; then printf 'claude=yes\n'; fi
+if command -v agy >/dev/null 2>&1; then printf 'antigravity=yes\n'; fi
 if command -v copilot >/dev/null 2>&1; then printf 'copilot=yes\\n'; fi`;
 const VERIFICATION_TTL = 5 * 60_000;
 const { Client } = ssh2;
@@ -197,7 +199,7 @@ export class SshConnectionService {
       this.verifications.set(verificationId, { key: connectionKey(profile), connection: connectionSettings(input, fingerprint), credentials, timer });
       return {
         verificationId, hostname: (fields.get("hostname") ?? input.host).slice(0, 253), architecture,
-        agents: { codex: fields.get("codex") === "yes", copilot: fields.get("copilot") === "yes" },
+        agents: { codex: fields.get("codex") === "yes", copilot: fields.get("copilot") === "yes", claude: fields.get("claude") === "yes", antigravity: fields.get("antigravity") === "yes" },
       };
     } finally { client.end(); }
   }

@@ -8,7 +8,7 @@ const MAX_RESPONSE_BYTES = 16 * 1024;
 const DEFAULT_LIFECYCLE_TIMEOUT_MS = 1_000;
 const DEFAULT_PERMISSION_TIMEOUT_MS = 9 * 60 * 1_000;
 
-export type HookAgent = "codex" | "copilot";
+export type HookAgent = "codex" | "copilot" | "claude" | "antigravity";
 
 export interface RunHookOptions {
   agent: HookAgent;
@@ -38,7 +38,7 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
 }
 
 function fallbackOutput(agent: HookAgent): string {
-  return agent === "codex" ? "{}" : "";
+  return agent === "copilot" ? "" : "{}";
 }
 
 function parseInput(input: string): Record<string, unknown> {
@@ -60,7 +60,7 @@ function permissionEvent(
   if (agent === "codex") {
     return input.hook_event_name === "PermissionRequest";
   }
-  return eventName === "permissionRequest";
+  return agent === "copilot" && eventName === "permissionRequest";
 }
 
 function endpointFor(
@@ -73,7 +73,7 @@ function endpointFor(
   if (!eventName || !/^[a-zA-Z]+$/.test(eventName)) {
     throw new Error("Copilot hook event name is invalid");
   }
-  return `/v1/hooks/copilot/${eventName}`;
+  return `/v1/hooks/${agent}/${eventName}`;
 }
 
 async function readResponseText(response: Response): Promise<string> {
@@ -197,7 +197,8 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
   let bodyText = options.input;
   let enriched: Record<string, unknown> | undefined;
   if (
-    options.sourcePid !== undefined
+    options.agent !== "antigravity" && options.agent !== "claude"
+    && options.sourcePid !== undefined
     && Number.isInteger(options.sourcePid)
     && options.sourcePid > 0
     && input.source_pid === undefined

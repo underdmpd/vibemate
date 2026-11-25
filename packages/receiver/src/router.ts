@@ -2,7 +2,8 @@ import { timingSafeEqual } from "node:crypto";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 import { CodexAdapter, formatCodexPermissionOutcome } from "@vibemate/adapter-codex";
-import { AdapterInputError } from "@vibemate/adapter-common";
+import { adaptMonitorEvent } from "./monitor-events.js";
+import { AdapterRuntime, AdapterInputError } from "@vibemate/adapter-common";
 import { CopilotAdapter, formatCopilotPermissionOutcome } from "@vibemate/adapter-copilot";
 import { type PermissionBroker, type PermissionOutcome, type SessionStore } from "@vibemate/core";
 import { parsePermissionDecision, PROTOCOL_VERSION } from "@vibemate/protocol";
@@ -18,6 +19,7 @@ const MAX_RAW_HOOK_BYTES = 256 * 1024;
 const MAX_DECISION_BYTES = 16 * 1024;
 
 export interface ReceiverRouterOptions {
+  monitorRuntime: AdapterRuntime;
   sessions: SessionStore;
   permissions: PermissionBroker;
   codex: CodexAdapter;
@@ -55,6 +57,15 @@ export class ReceiverRouter {
       if (request.method === "POST" && url.pathname === "/v1/hooks/codex") {
         const result = this.options.codex.adapt(await readJson(request, MAX_RAW_HOOK_BYTES));
         await this.handleAdapterResult("codex", result, request, response);
+        return;
+      }
+
+      const monitor = /^\/v1\/hooks\/(claude|antigravity)\/([A-Za-z]+)$/.exec(url.pathname);
+      if (request.method === "POST" && monitor) {
+        const agent = monitor[1] === "claude" ? "claude" : "antigravity";
+        const event = adaptMonitorEvent(this.options.monitorRuntime, agent, monitor[2]!, await readJson(request, MAX_RAW_HOOK_BYTES));
+        if (event) this.options.sessions.apply(event);
+        sendJson(response, 202, {});
         return;
       }
 

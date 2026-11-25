@@ -31,7 +31,7 @@ export class EnvironmentStore {
       const value: unknown = JSON.parse(await readFile(this.path, "utf8"));
       if (!isConfiguration(value)) throw new Error("unsupported VibeMate settings format");
       for (const environment of value.environments) {
-        environment.codexApprovalsEnabled = environment.codexApprovalsEnabled === true;
+        environment.codexApprovalsEnabled = false;
       }
       value.preferences.petEnabled = value.preferences.petEnabled === true;
       value.preferences.showPet = value.preferences.showPet !== false;

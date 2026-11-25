@@ -53,7 +53,10 @@ test("Codex installation preserves user hooks and is idempotent", async (context
   };
   await writeFile(configPath, JSON.stringify({
     custom: true,
-    hooks: { SessionStart: [userHook] },
+    hooks: {
+      SessionStart: [userHook],
+      PermissionRequest: [{ hooks: [...userHook.hooks, { command: "old --vibemate-hook-runner" }] }],
+    },
   }));
 
   const first = await installCodexHooks({
@@ -71,6 +74,8 @@ test("Codex installation preserves user hooks and is idempotent", async (context
   const hooks = installed.hooks as Record<string, unknown[]>;
   assert.deepEqual(hooks.SessionStart?.[0], userHook);
   assert.equal(hooks.SessionStart?.length, 2);
+  assert.deepEqual(hooks.PermissionRequest, [userHook]);
+  assert.equal(first.permissionInstalled, false);
 
   const second = await installCodexHooks({
     homeDir,
