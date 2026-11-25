@@ -232,8 +232,9 @@ function render(value) {
       - (lastOpened.get(a.key) ?? Date.parse(a.session.updatedAt)));
   const onlineDevices = new Set((value.environments ?? []).filter(e => e.status === 'connected').map(e => e.deviceId)).size;
 
-  // The capsule says one thing: the task waiting for the user, else how many are still running.
   const lead = open.find(item => item.key === toastId) ?? open[0];
+  const otherRunning = lead ? running.filter(item => !item.offline).length : 0;
+  const runningSummary = otherRunning ? `另有 ${otherRunning} 个任务运行中` : '';
   const kind = lead ? lead.kind : running.length ? 'running' : onlineDevices ? 'idle' : 'offline';
   const monitor = $('monitor');
   monitor.dataset.kind = kind;
@@ -249,7 +250,10 @@ function render(value) {
     : onlineDevices ? `${onlineDevices} 台设备在线 · 空闲` : '未连接设备';
   $('capsule-status').textContent = lead ? lead.status : '';
   $('capsule-extra').textContent = open.length > 1 ? `+${open.length - 1}` : '';
-  $('capsule').setAttribute('aria-label', lead ? `${$('capsule-text').textContent} ${lead.status}，点击展开` : '展开任务监控');
+  $('capsule-running').textContent = runningSummary;
+  const description = [$('capsule-text').textContent, lead?.status,
+    open.length > 1 ? `另有 ${open.length - 1} 条提醒` : '', runningSummary, '点击展开任务列表'].filter(Boolean).join('，');
+  $('capsule').setAttribute('aria-label', description);
   $('capsule').title = '点击查看任务列表';
 
   $('headline').textContent = open.length ? `${open.length} 个轮到你` : running.length ? `${running.length} 个在跑` : '任务监控';

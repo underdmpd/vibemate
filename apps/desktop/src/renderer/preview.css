@@ -60,8 +60,14 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
 }
 .capsule:hover { box-shadow: 0 6px 18px #203b3230, 0 1px 2px #203b3214; }
 .capsule-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #4f645c; }
-.capsule-status, .capsule-extra { flex: none; }
-.capsule-status:empty, .capsule-extra:empty { display: none; }
+.capsule-status, .capsule-extra, .capsule-running { flex: none; }
+.capsule-status:empty, .capsule-extra:empty, .capsule-running:empty { display: none; }
+.capsule-running {
+  padding-left: 8px;
+  border-left: 1px solid #b9c9c0;
+  color: #4f685e;
+  font-weight: 400;
+}
 .capsule-extra { font-weight: 600; color: #8b9b94; }
 
 /* Something is waiting for the user: the device and task are named, and it stays until handled. */
