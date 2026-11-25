@@ -15,6 +15,19 @@ import {
 
 const TOKEN = "a".repeat(43);
 
+import { windowsTerminalTarget } from "./windows-terminal.js";
+
+test("Windows Terminal detection preserves VS Code and legacy routes", async () => {
+  const wt = { WT_SESSION: "terminal-session" };
+  const probe = async () => "123:456:789";
+  assert.equal(await windowsTerminalTarget("win32", wt, probe), "123:456:789");
+  assert.equal(await windowsTerminalTarget("win32", wt, async () => ""), "unknown");
+  for (const env of [{}, { ...wt, TERM_PROGRAM: "vscode" }, { ...wt, VSCODE_INJECTION: "1" }]) {
+    assert.equal(await windowsTerminalTarget("win32", env, probe), undefined);
+  }
+  assert.equal(await windowsTerminalTarget("linux", wt, probe), undefined);
+});
+
 interface TestServer {
   port: number;
   close(): Promise<void>;

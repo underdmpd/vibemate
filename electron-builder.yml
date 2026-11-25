@@ -56,6 +56,7 @@ files:
   - from: node_modules/zod
     to: node_modules/zod
 asarUnpack:
+  - apps/desktop/dist/FocusCodeWindow.exe
   - apps/desktop/src/focus-code-window.ps1
 extraResources:
   - from: packages/hook-runner/dist

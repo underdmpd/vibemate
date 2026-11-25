@@ -61,6 +61,14 @@ test("focusSessionWindow resolves local git root for subdirectories", async (con
   await focusSessionWindow(env, session, options);
   await focusSessionWindow(env, { ...session, recentEvents: [] }, options);
   assert.deepEqual(projects, [basename(root), ""]);
+  const target = "123:456:789";
+  let activated = "";
+  await focusSessionWindow(env, { ...session, terminalTarget: target }, {
+    ...options, activateTerminal: async value => { activated = value; },
+  });
+  assert.equal(activated, target);
+  await assert.rejects(focusSessionWindow(env, { ...session, terminalTarget: "unknown" }, options), /Windows Terminal/);
+  assert.deepEqual(projects, [basename(root), ""]);
 });
 
 test("SeenSessionStore persists marks across reload", async (context) => {

@@ -1,3 +1,4 @@
+import { windowsTerminalTarget } from "./windows-terminal.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readCopilotLastAssistantMessage, resolveAgentSourcePid } from "./enrich.js";
@@ -242,6 +243,7 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
     throw new Error("hook timeout must be a positive integer");
   }
 
+  const terminal = await windowsTerminalTarget();
   const response = await (options.fetchImpl ?? fetch)(
     `http://${runtime.host}:${runtime.port}${endpointFor(options.agent, options.eventName)}`,
     {
@@ -249,6 +251,7 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
       headers: {
         "content-type": "application/json",
         "x-vibemate-token": runtime.authToken,
+        ...(terminal ? { "x-vibemate-terminal": terminal } : {}),
       },
       body: bodyText,
       redirect: "error",

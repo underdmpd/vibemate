@@ -150,7 +150,7 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
 .section-label { padding: 6px 8px 2px; font-size: 10px; letter-spacing: .5px; color: #9aa9a2; }
 .task {
   display: grid;
-  grid-template-columns: 12px 1fr auto;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
   padding: 8px 8px;
@@ -162,19 +162,25 @@ button:focus-visible { outline: 2px solid #298d78; outline-offset: 2px; }
 .task.open.kind-attention { background: #faf4e9; }
 .task.highlight { box-shadow: inset 0 0 0 1px #9fd0be; }
 .task.seen, .task.offline { opacity: .6; }
-.task.can-jump { cursor: pointer; }
-.task.can-jump:hover { background: #e3efe9; opacity: 1; }
+.task:hover, .task:focus-within { background: #e3efe9; opacity: 1; }
 .task-main { min-width: 0; }
 .task-title { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-meta { display: block; font-size: 10.5px; color: #8b9b94; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-side, .task-jump { font-size: 10.5px; color: #769087; white-space: nowrap; }
+.task-side { font-size: 10.5px; color: #769087; white-space: nowrap; }
 .kind-done.open .task-side { color: #2f8a72; }
 .kind-error.open .task-side { color: #c0463a; }
 .kind-attention.open .task-side { color: #ad853c; }
-/* hovering a row swaps its status for the action: go back to that window */
-.task-jump { display: none; font-weight: 600; color: #2c7c65; }
-.task.can-jump:hover .task-jump { display: inline; }
-.task.can-jump:hover .task-side { display: none; }
+.task-actions { display: flex; flex-direction: column; gap: 3px; }
+.resume-actions { grid-column: 2 / -1; align-items: flex-start; }
+.task-actions button, .recent-toggle {
+  padding: 3px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #386a58;
+  font-size: 11px;
+}
+.task-actions button:hover, .recent-toggle:hover { background: #d7e8df; }
 .task-detail {
   grid-column: 2 / -1;
   margin: 4px 0 0;

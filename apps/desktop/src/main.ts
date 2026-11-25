@@ -28,7 +28,8 @@ import { parseReminderState, ReminderWindow } from "./reminder-window.js";
 import { WindowPositionStore } from "./window-position.js";
 import { describeNotice, TaskNotifier, type TaskNotice } from "./task-notifier.js";
 import { SeenSessionStore } from "./seen-store.js";
-import { focusSessionWindow, WindowFocusError } from "./focus-session.js";
+import { focusSessionWindow, warmCodeWindowHelper, WindowFocusError } from "./focus-session.js";
+import { resumeSession } from "./resume-session.js";
 
 const sourceDirectory = fileURLToPath(new URL(".", import.meta.url));
 const rendererDirectory = join(sourceDirectory, "../src/renderer");
@@ -463,7 +464,7 @@ ipcMain.handle("vibemate:mark-session-seen", async (event, key: unknown, mark: u
   return getSnapshot();
 });
 
-ipcMain.handle("vibemate:focus-session", async (event, identity: unknown) => {
+ipcMain.handle("vibemate:focus-session", async (event, identity: unknown, action?: unknown) => {
   if (event.sender !== reminder.window?.webContents && event.sender !== controlWindow?.webContents) {
     throw new Error("unauthorized");
   }
@@ -490,7 +491,8 @@ ipcMain.handle("vibemate:focus-session", async (event, identity: unknown) => {
     throw new Error("session not found");
   }
   try {
-    await focusSessionWindow(environment, session);
+    if (action === "resume") await resumeSession(environment, session);
+    else await focusSessionWindow(environment, session);
   } catch (error) {
     if (error instanceof WindowFocusError) return error.message;
     throw error;
@@ -516,6 +518,7 @@ async function startDesktop(): Promise<void> {
   // Windows only shows toasts for apps with an AppUserModelID matching the installer's appId.
   if (process.platform === "win32") app.setAppUserModelId("com.dfrobot.vibemate");
   await app.whenReady();
+  warmCodeWindowHelper();
   try {
     environmentStore = new EnvironmentStore(join(app.getPath("userData"), "environments.json"), hostname());
     seenStore = new SeenSessionStore(join(app.getPath("userData"), "seen-sessions.json"));

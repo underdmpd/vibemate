@@ -5,8 +5,8 @@ const api = window.vibemate;
 //   done      – the turn ended; the user should go back and look
 //   attention – the turn is blocked on a confirmation
 //   error     – the turn failed, or the task cannot go on by itself (see problemText)
-const rank = { error: 4, attention: 3, done: 2, running: 1 };
-const statusText = { completed: '完成了', failed: '失败了', waiting_permission: '等你确认' };
+const rank = { error: 4, attention: 3, done: 2, running: 1, idle: 0 };
+const statusText = { completed: '完成了', failed: '失败了', waiting_permission: '等你确认', idle: '空闲', ended: '会话已结束' };
 // The only ways a "running" task silently stops being one. The first three are decided upstream and
 // arrive as session.problem; a lost device is known here from the environment's connection.
 const problemText = { api_failed: '模型请求失败', api_timeout: '模型请求超时', process_exited: '进程没了', offline: '设备掉线' };
@@ -16,12 +16,11 @@ const problemHint = {
   process_exited: 'Agent 进程意外退出，任务没有做完。',
   offline: '设备连不上了，任务可能还在跑，也可能已经停了。',
 };
-const SEEN_TTL = 300_000;
 // A device that drops off is only reported once it has stayed away this long; short blips are ignored.
 const OFFLINE_GRACE = 90_000;
 const DOT_AFTER_EMPTY = 30_000;
 const DRAG_THRESHOLD = 4;
-const MAX_ROWS = 6;
+const RECENT_ROWS = 3;
 const TOAST_DURATION = 6_000;
 
 let snapshot = {};
@@ -34,6 +33,10 @@ let toastTimer;
 let highlightId;
 // session key -> the stop the user has already looked at. A new turn ending un-sees it again.
 const seen = new Map();
+const lastOpened = new Map();
+const openingSessions = new Set();
+let recentExpanded;
+let showAllRecent = false;
 // environmentId -> when it was first seen disconnected (used when the host does not say).
 const offlineSince = new Map();
 const identity = item => `${item.environmentId}/${item.agent}/${item.sessionId}`;
@@ -64,15 +67,15 @@ function classify(value) {
     else if (session.state === 'completed') kind = 'done';
     else if (session.state === 'waiting_permission') kind = 'attention';
     else if (running) kind = 'running';
+    else if (session.state === 'idle' || session.state === 'ended') kind = 'idle';
     else continue;
     const key = identity(session);
     const mark = `${session.updatedAt}/${problem ?? ''}`;
     const isSeen = kind !== 'running' && seen.get(key) === mark;
-    if (isSeen && !running && now - Date.parse(session.updatedAt) > SEEN_TTL) continue;
     const status = problem ? problemText[problem]
       : kind === 'running' ? (session.startedAt ? `已跑 ${duration(now - Date.parse(session.startedAt))}` : '在跑')
       : statusText[session.state];
-    items.push({ session, key, kind, status, problem, mark, offline, seen: isSeen, open: kind !== 'running' && !isSeen,
+    items.push({ session, key, kind, status, problem, mark, offline, seen: isSeen, open: kind !== 'running' && kind !== 'idle' && !isSeen,
       title: session.title ?? session.project ?? session.sessionId });
   }
   return items.sort((a, b) => b.open - a.open || rank[b.kind] - rank[a.kind]
@@ -113,16 +116,37 @@ async function goBack(item) {
       if (message) { $('feedback').textContent = message; return; }
     } catch { $('feedback').textContent = '没能切到那个窗口，请手动回到对应终端。'; return; }
   }
+  lastOpened.set(item.key, Date.now());
+  acknowledge(item);
+}
+
+function acknowledge(item) {
   $('feedback').textContent = '';
   seen.set(item.key, item.mark);
   render(snapshot);
   void api.markSessionSeen?.(item.key, item.mark).catch(() => undefined);
 }
 
+async function resumeInTerminal(item) {
+  if (openingSessions.has(item.key)) return;
+  openingSessions.add(item.key);
+  render(snapshot);
+  const { environmentId, agent, sessionId } = item.session;
+  try {
+    const message = await api.resumeSession({ environmentId, agent, sessionId });
+    $('feedback').textContent = message || '已请求在 Windows Terminal 中继续。';
+    if (!message) lastOpened.set(item.key, Date.now());
+  } catch {
+    $('feedback').textContent = '无法打开这条对话，请重试。';
+  } finally {
+    setTimeout(() => { openingSessions.delete(item.key); render(snapshot); }, 1200);
+  }
+}
+
 function buildTask(item, value) {
   const { session, key } = item;
   // A finished task on a device that has since gone away: nothing to go back to.
-  const offline = item.offline && !item.problem;
+  const offline = item.offline;
   const agentName = ({ codex: 'Codex', copilot: 'Copilot', claude: 'Claude Code', antigravity: 'Antigravity' })[session.agent];
 
   const card = document.createElement('div');
@@ -134,21 +158,41 @@ function buildTask(item, value) {
   const meta = document.createElement('span'); meta.className = 'task-meta';
   meta.textContent = [session.environmentName ?? '本机', session.project !== item.title && session.project, agentName].filter(Boolean).join(' · ');
   main.append(title, meta);
-  const side = document.createElement('span');
+  const side = document.createElement('span'); side.className = 'task-actions';
   const state = document.createElement('span'); state.className = 'task-side';
   state.textContent = offline ? '已断线'
     : session.agent === 'copilot' && session.state === 'waiting_permission' ? '回终端处理'
     : item.status;
-  side.append(state);
+  main.append(state);
   card.append(icon, main, side);
 
-  if (!offline) {
-    card.classList.add('can-jump');
-    const jump = document.createElement('span'); jump.className = 'task-jump';
-    jump.textContent = api.focusSession ? '回去 ↗' : '知道了';
+  const localWindows = value.environments?.some(env => env.environmentId === session.environmentId && env.kind === 'windows');
+  const terminal = localWindows && session.terminalTarget;
+  if (localWindows && !offline && api.resumeSession && session.state === 'ended' && ['codex', 'copilot'].includes(session.agent)) {
+    side.classList.add('resume-actions');
+    const resume = document.createElement('button');
+    resume.disabled = openingSessions.has(key);
+    resume.textContent = resume.disabled ? '正在打开…' : '在 Windows Terminal 继续';
+    resume.onclick = () => resumeInTerminal(item);
+    side.append(resume);
+  }
+  if (terminal === 'unknown' && session.state !== 'ended') {
+    const hint = document.createElement('span');
+    hint.className = 'task-side';
+    hint.textContent = '请手动切回终端';
+    side.append(hint);
+  }
+  if (terminal !== 'unknown' && api.focusSession && !offline && session.state !== 'ended' && item.problem !== 'process_exited') {
+    const jump = document.createElement('button');
+    jump.textContent = terminal ? '打开终端窗口' : '回到任务';
+    jump.onclick = () => goBack(item);
     side.append(jump);
-    card.title = api.focusSession ? '回到这个任务所在的窗口' : '标记为已看过';
-    card.onclick = event => { if (!event.target.closest('button')) goBack(item); };
+  }
+  if (item.open) {
+    const dismiss = document.createElement('button');
+    dismiss.textContent = '知道了';
+    dismiss.onclick = () => acknowledge(item);
+    side.append(dismiss);
   }
 
   if (item.kind !== 'running' && !offline) {
@@ -172,11 +216,14 @@ function render(value) {
     }
   }
   const items = classify(value);
-  if (items.length > 0) emptySince = Date.now();
 
   const open = items.filter(item => item.open);
   const running = items.filter(item => item.kind === 'running');
-  const settled = items.filter(item => item.seen);
+  const activeCount = open.length + running.length;
+  if (activeCount) emptySince = Date.now();
+  const recent = items.filter(item => item.seen || item.kind === 'idle')
+    .sort((a, b) => (lastOpened.get(b.key) ?? Date.parse(b.session.updatedAt))
+      - (lastOpened.get(a.key) ?? Date.parse(a.session.updatedAt)));
   const onlineDevices = new Set((value.environments ?? []).filter(e => e.status === 'connected').map(e => e.deviceId)).size;
 
   // The capsule says one thing: the task waiting for the user, else how many are still running.
@@ -186,7 +233,7 @@ function render(value) {
   monitor.dataset.kind = kind;
   const quiet = value.preferences?.reminderMode === 'quiet';
   monitor.toggleAttribute('data-quiet', quiet);
-  monitor.dataset.mode = currentMode(items.length, open.length, quiet);
+  monitor.dataset.mode = currentMode(activeCount, open.length, quiet);
   $('mode-toggle').hidden = !api.setReminderMode;
   $('mode-toggle').textContent = quiet ? '安静模式' : '常驻模式';
   $('mode-toggle').title = quiet ? '现在：任务在跑时缩成小点，有事才出现。点击改为一直显示' : '现在：一直显示。点击改为任务在跑时缩成小点';
@@ -199,21 +246,36 @@ function render(value) {
   $('capsule').setAttribute('aria-label', lead ? `${$('capsule-text').textContent} ${lead.status}，点击展开` : '展开任务监控');
   $('capsule').title = '点击查看任务列表';
 
-  $('headline').textContent = open.length ? `${open.length} 个轮到你` : running.length ? `${running.length} 个在跑` : '没有活跃任务';
+  $('headline').textContent = open.length ? `${open.length} 个轮到你` : running.length ? `${running.length} 个在跑` : '任务监控';
   $('connection').textContent = `${onlineDevices} 台设备在线`;
   $('expanded').hidden = !expanded;
 
   const nodes = [];
-  let rows = 0;
-  for (const [label, group] of [['轮到你', open], ['在跑', running], ['看过了', settled]]) {
-    const visible = group.slice(0, Math.max(0, MAX_ROWS - rows));
-    if (!visible.length) continue;
-    if (open.length && (running.length || settled.length)) nodes.push(sectionLabel(label));
-    nodes.push(...visible.map(item => buildTask(item, value)));
-    rows += visible.length;
+  for (const [label, group] of [['轮到你', open], ['在跑', running]]) {
+    if (!group.length) continue;
+    if (open.length && running.length) nodes.push(sectionLabel(label));
+    nodes.push(...group.map(item => buildTask(item, value)));
   }
-  if (items.length > rows) {
-    const more = document.createElement('div'); more.className = 'empty'; more.textContent = `还有 ${items.length - rows} 项`; nodes.push(more);
+  if (recent.length) {
+    const visible = !activeCount || recentExpanded;
+    if (activeCount) {
+      const toggle = document.createElement('button');
+      toggle.className = 'recent-toggle';
+      toggle.textContent = `最近任务（${recent.length}） ${visible ? '▴' : '▾'}`;
+      toggle.setAttribute('aria-expanded', String(Boolean(visible)));
+      toggle.onclick = () => { recentExpanded = !visible; render(snapshot); };
+      nodes.push(toggle);
+    } else nodes.push(sectionLabel('最近任务'));
+    if (visible) {
+      nodes.push(...(showAllRecent ? recent : recent.slice(0, RECENT_ROWS)).map(item => buildTask(item, value)));
+      if (recent.length > RECENT_ROWS) {
+        const more = document.createElement('button');
+        more.className = 'recent-toggle';
+        more.textContent = showAllRecent ? '收起列表' : `查看全部（${recent.length}）`;
+        more.onclick = () => { showAllRecent = !showAllRecent; render(snapshot); };
+        nodes.push(more);
+      }
+    }
   }
   if (!nodes.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = '暂时没有活跃任务'; nodes.push(empty); }
   $('tasks').replaceChildren(...nodes);

@@ -14,6 +14,7 @@ export interface SessionSnapshot extends SessionIdentity {
   title?: string;
   summary?: string;
   problem?: SessionProblem;
+  terminalTarget?: string;
   recentEvents: AgentEvent[];
 }
 
@@ -85,6 +86,7 @@ function cloneSnapshot(record: SessionRecord): SessionSnapshot {
     ...(record.title ? { title: record.title } : {}),
     ...(record.summary ? { summary: record.summary } : {}),
     ...(record.problem ? { problem: record.problem } : {}),
+    ...(record.terminalTarget ? { terminalTarget: record.terminalTarget } : {}),
     recentEvents: structuredClone(record.recentEvents),
   };
 }
@@ -106,7 +108,7 @@ export class SessionStore {
     this.recoverableApiFailureThreshold = options.recoverableApiFailureThreshold ?? 3;
   }
 
-  apply(event: AgentEvent): ApplyEventOutcome {
+  apply(event: AgentEvent, terminalTarget?: string): ApplyEventOutcome {
     const key = createSessionKey(event);
     let record = this.sessions.get(key);
     const dedupeKey = `${key}\u0000${event.eventId}`;
@@ -138,6 +140,7 @@ export class SessionStore {
         stateOccurredAtMs: Date.parse(event.occurredAt),
         stateEventId: event.eventId,
         lastEventName: event.event,
+        ...(terminalTarget ? { terminalTarget } : {}),
         consecutiveApiFailures: 0,
         recentEvents: [structuredClone(event)],
         completedTurns: new Set(),
@@ -164,6 +167,8 @@ export class SessionStore {
       && (record.problem === "api_failed"
         || (event.problem === "api_failed" && record.consecutiveApiFailures > 0));
 
+    if (terminalTarget) record.terminalTarget = terminalTarget;
+    else delete record.terminalTarget;
     record.updatedAt = event.occurredAt;
     record.stateOccurredAtMs = Date.parse(event.occurredAt);
     record.stateEventId = event.eventId;

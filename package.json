@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b packages/protocol packages/core packages/adapter-common packages/adapter-codex packages/adapter-copilot packages/receiver packages/hook-runner packages/hook-installer apps/desktop",
+    "build": "tsc -b packages/protocol packages/core packages/adapter-common packages/adapter-codex packages/adapter-copilot packages/receiver packages/hook-runner packages/hook-installer apps/desktop && node scripts/build-focus-helper.mjs",
     "clean": "tsc -b packages/protocol packages/core packages/adapter-common packages/adapter-codex packages/adapter-copilot packages/receiver packages/hook-runner packages/hook-installer apps/desktop --clean",
     "test": "npm run build && node --test packages/protocol/dist/*.test.js packages/core/dist/*.test.js packages/adapter-codex/dist/*.test.js packages/adapter-copilot/dist/*.test.js packages/receiver/dist/*.test.js packages/hook-runner/dist/*.test.js packages/hook-installer/dist/*.test.js apps/desktop/dist/*.test.js",
     "typecheck": "tsc -b packages/protocol packages/core packages/adapter-common packages/adapter-codex packages/adapter-copilot packages/receiver packages/hook-runner packages/hook-installer apps/desktop --pretty false",

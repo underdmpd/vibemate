@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("vibemate", {
   setFocus: (focus) => ipcRenderer.invoke("vibemate:set-focus", focus),
   markSessionSeen: (key, mark) => ipcRenderer.invoke("vibemate:mark-session-seen", key, mark),
   focusSession: (identity) => ipcRenderer.invoke("vibemate:focus-session", identity),
+  resumeSession: (identity) => ipcRenderer.invoke("vibemate:focus-session", identity, "resume"),
   addSshEnvironment: (host) => ipcRenderer.invoke("vibemate:add-ssh-environment", host),
   pickPrivateKey: () => ipcRenderer.invoke("vibemate:pick-private-key"),
   testSshConnection: (input) => ipcRenderer.invoke("vibemate:test-ssh-connection", input),

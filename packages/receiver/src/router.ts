@@ -28,6 +28,11 @@ export interface ReceiverRouterOptions {
   onError: (error: Error) => void;
 }
 
+function terminalTarget(request: IncomingMessage): string | undefined {
+  const target = request.headers["x-vibemate-terminal"];
+  return typeof target === "string" && /^(?:unknown|[1-9]\d{0,9}:[1-9]\d{0,9}:[1-9]\d{0,18})$/.test(target) ? target : undefined;
+}
+
 export class ReceiverRouter {
   constructor(private readonly options: ReceiverRouterOptions) {}
 
@@ -64,7 +69,7 @@ export class ReceiverRouter {
       if (request.method === "POST" && monitor) {
         const agent = monitor[1] === "claude" ? "claude" : "antigravity";
         const event = adaptMonitorEvent(this.options.monitorRuntime, agent, monitor[2]!, await readJson(request, MAX_RAW_HOOK_BYTES));
-        if (event) this.options.sessions.apply(event);
+        if (event) this.options.sessions.apply(event, terminalTarget(request));
         sendJson(response, 202, {});
         return;
       }
@@ -116,12 +121,12 @@ export class ReceiverRouter {
     }
 
     if (result.kind === "event") {
-      const applied = this.options.sessions.apply(result.event);
+      const applied = this.options.sessions.apply(result.event, terminalTarget(request));
       sendJson(response, 202, { result: applied.result });
       return;
     }
 
-    if (this.options.permissions.isControllerAvailable()) this.options.sessions.apply(result.event);
+    if (this.options.permissions.isControllerAvailable()) this.options.sessions.apply(result.event, terminalTarget(request));
 
     const controller = new AbortController();
     const abort = () => controller.abort();

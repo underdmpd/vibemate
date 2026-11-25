@@ -14,6 +14,7 @@ export interface FocusCommand {
 
 export interface FocusSessionOptions {
   platform?: NodeJS.Platform;
+  activateTerminal?: (target: string) => Promise<void>;
   activateExisting?: (project: string) => Promise<void>;
   findLocalGitRoot?: (cwd: string) => Promise<string | undefined>;
   runCommand?: (command: string, args: string[], options: { shell: boolean; timeout: number }) => Promise<void>;
@@ -88,17 +89,37 @@ export function buildFocusCommand(
 
 export class WindowFocusError extends Error {}
 
-async function activateExistingCodeWindow(project: string): Promise<void> {
+const codeWindowHelper = fileURLToPath(new URL("./FocusCodeWindow.exe", import.meta.url)).replace(/\bapp\.asar([\\/])/, "app.asar.unpacked$1");
+
+// Load the helper once in the background so the first click needn't pay its cold launch cost.
+export function warmCodeWindowHelper(): void {
+  if (process.platform === "win32") void execFileAsync(codeWindowHelper, [], { windowsHide: true, timeout: 8000 }).catch(() => {});
+}
+
+async function activateExistingWindow(project: string, terminalTarget = ""): Promise<void> {
+  let result: string | undefined;
+  if (!terminalTarget) {
+    try {
+      result = (await execFileAsync(codeWindowHelper, [project], { windowsHide: true, timeout: 8000 })).stdout.trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  if (result === undefined) result = await runFocusScript(project, terminalTarget);
+  if (result === "focused") return;
+  if (terminalTarget) throw new WindowFocusError("未能激活原来的 Windows Terminal 窗口，请手动切换。");
+  if (result === "none") throw new WindowFocusError("没有打开的 VS Code 窗口。");
+  if (result === "unmatched") throw new WindowFocusError("无法唯一匹配项目窗口，请手动切换。");
+  throw new WindowFocusError("Windows 未能将 VS Code 切到前台，请手动切换。");
+}
+
+async function runFocusScript(project: string, terminalTarget: string): Promise<string> {
   // Electron cannot pass a script inside app.asar directly to PowerShell.
   const script = fileURLToPath(new URL("../src/focus-code-window.ps1", import.meta.url)).replace(/\bapp\.asar([\\/])/, "app.asar.unpacked$1");
   const { stdout } = await execFileAsync("powershell.exe", [
     "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script,
-  ], { env: { ...process.env, VIBEMATE_FOCUS_PROJECT: project }, windowsHide: true, timeout: 8000 });
-  const result = stdout.trim();
-  if (result === "focused") return;
-  if (result === "none") throw new WindowFocusError("没有打开的 VS Code 窗口。");
-  if (result === "unmatched") throw new WindowFocusError("无法唯一匹配项目窗口，请手动切换。");
-  throw new WindowFocusError("Windows 未能将 VS Code 切到前台，请手动切换。");
+  ], { env: { ...process.env, VIBEMATE_FOCUS_PROJECT: project, VIBEMATE_TERMINAL_TARGET: terminalTarget }, windowsHide: true, timeout: 8000 });
+  return stdout.trim();
 }
 
 async function defaultRunCommand(
@@ -124,8 +145,14 @@ export async function focusSessionWindow(
   const platform = options.platform ?? process.platform;
   const rawCwd = sessionCwd(session);
   if (platform === "win32" && environment.kind === "windows") {
+    if (session.terminalTarget) {
+      if (session.terminalTarget === "unknown") throw new WindowFocusError("未能定位原来的 Windows Terminal 窗口。");
+      if (options.activateTerminal) await options.activateTerminal(session.terminalTarget);
+      else await activateExistingWindow("", session.terminalTarget);
+      return;
+    }
     const root = rawCwd && await (options.findLocalGitRoot ?? findLocalGitRoot)(rawCwd).catch(() => undefined);
-    await (options.activateExisting ?? activateExistingCodeWindow)(basename(root || rawCwd || ""));
+    await (options.activateExisting ?? activateExistingWindow)(basename(root || rawCwd || ""));
     return;
   }
   if (!rawCwd) {
