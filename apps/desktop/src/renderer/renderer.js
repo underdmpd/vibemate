@@ -3,6 +3,19 @@ import { createSshDeviceDialog } from './ssh-device-dialog.js';
 const environmentsContainer = document.querySelector("#environments");
 const scanButton = document.querySelector("#scan-environments");
 const onboardingTip = document.querySelector("#onboarding-tip");
+const agentGuide = document.querySelector("#agent-guide");
+const guideEnvironment = document.querySelector("#guide-environment");
+const guideLocation = document.querySelector("#guide-location");
+let guideEnvironments = [];
+function updateGuideLocation() {
+  const env = guideEnvironments.find(item => item.environmentId === guideEnvironment.value);
+  if (!env) { guideLocation.textContent = "请先扫描本机与 WSL，或添加远程设备。"; return; }
+  const location = env.kind === "windows" ? "打开本机 PowerShell，使用启用监控的 Windows 账号。"
+    : env.kind === "wsl" ? `进入 WSL 发行版「${env.distribution ?? env.name}」，用安装 Hook 的 Linux 用户打开终端。`
+    : `通过 SSH 登录「${env.name}」，使用${env.sshConnection?.username ? `配置设备时的账号 ${env.sshConnection.username}` : "安装 Hook 的 Linux 用户"}。`;
+  guideLocation.textContent = location + " 只需完成所用 Agent 对应的步骤。";
+}
+guideEnvironment.addEventListener("change", updateGuideLocation);
 const focusSelect = document.querySelector("#pet-focus");
 const petSection = document.querySelector("#pet-section");
 const systemNotifications = document.querySelector("#system-notifications");
@@ -32,7 +45,9 @@ function createEnvironmentRow(environment) {
     action.disabled = true;
     try {
       if (active) await window.vibemate.stopEnvironment(environment.environmentId);
-      else if (environment.kind === "windows") await window.vibemate.setEnvironmentEnabled(environment.environmentId, true);
+      else if (environment.kind === "windows") {
+        await window.vibemate.setEnvironmentEnabled(environment.environmentId, true);
+      }
       else if (environment.sshConnection) { sshDialog.open(environment); }
       else await window.vibemate.startEnvironment(environment.environmentId);
     } catch (error) {
@@ -71,6 +86,22 @@ function render(snapshot) {
   environmentsContainer.classList.toggle("empty", environments.length === 0);
   if (environments.length === 0) environmentsContainer.textContent = "未发现环境";
   onboardingTip.hidden = Boolean(snapshot?.onboardingCompleted);
+  const previousSelection = guideEnvironment.value;
+  const firstConnection = environments.find(env => env.status === "connected"
+    && !localStorage.getItem("agent-guide-shown:" + env.environmentId)
+    && !guideEnvironments.some(old => old.environmentId === env.environmentId && old.status === "connected"));
+  const choicesChanged = environments.length !== guideEnvironments.length || environments.some((env, index) =>
+    env.environmentId !== guideEnvironments[index]?.environmentId || env.name !== guideEnvironments[index]?.name);
+  guideEnvironments = environments;
+  if (choicesChanged) guideEnvironment.replaceChildren(...environments.map(env => new Option(env.name, env.environmentId)));
+  if (firstConnection) {
+    guideEnvironment.value = firstConnection.environmentId;
+    agentGuide.open = true;
+    localStorage.setItem("agent-guide-shown:" + firstConnection.environmentId, "1");
+  } else if (choicesChanged && environments.some(env => env.environmentId === previousSelection)) {
+    guideEnvironment.value = previousSelection;
+  }
+  updateGuideLocation();
   petSection.hidden = snapshot?.preferences?.petEnabled !== true;
   systemNotifications.checked = snapshot?.preferences?.systemNotifications !== false;
   reminderMode.value = snapshot?.preferences?.reminderMode === "quiet" ? "quiet" : "pinned";

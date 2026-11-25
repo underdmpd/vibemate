@@ -308,6 +308,13 @@ button.secondary { background: #334155; }
 button.allow { background: #15803d; }
 .environment-actions { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
 #settings-feedback:empty { display: none; }
+.agent-guide { margin-top: 12px; border-top: 1px solid #334155; padding-top: 12px; font-size: 13px; }
+.agent-guide summary { cursor: pointer; color: #bfdbfe; font-weight: 600; }
+.agent-guide label { display: block; margin-top: 12px; }
+.agent-guide dl { margin: 12px 0; }
+.agent-guide dt { font-weight: 600; margin-top: 8px; }
+.agent-guide dd { margin: 2px 0 0; color: #cbd5e1; line-height: 1.6; }
+.agent-guide code { overflow-wrap: anywhere; }
 dialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 28px); padding: 20px; border: 1px solid #475569; border-radius: 16px; color: #e5e7eb; background: #111827; }
 dialog::backdrop { background: rgb(2 6 23 / 75%); }
 dialog form > label, dialog form > div > label, .ssh-field-row label { display: block; margin: 12px 0 6px; font-size: 13px; }

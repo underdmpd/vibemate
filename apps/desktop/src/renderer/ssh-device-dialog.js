@@ -96,7 +96,7 @@ export function createSshDeviceDialog(api, onSaved, onFeedback) {
     setBusy(true); message('正在部署接收端并注册 Agent Hook，请稍候…');
     try {
       const id = await save(); onSaved(await api.startEnvironment(id));
-      setBusy(false); close(); onFeedback('监控已启动，连接状态见环境列表。请重启设备上的 Copilot / Codex 会话，让新 Hook 生效。');
+      setBusy(false); close(); onFeedback('监控已启动。请在远端设备上按「首次接入 Agent」指引验证第一个任务。');
     } catch (error) { message(errorMessage(error), true); }
     finally { setBusy(false); }
   };

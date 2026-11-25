@@ -21,8 +21,20 @@
             <button id="scan-environments" class="compact" type="button">扫描本机与 WSL</button>
           </div>
         </div>
-        <p id="onboarding-tip" class="connection-detail">请选择要监控的环境。VibeMate 不会自动启动已关闭的 WSL，也不会自动连接 SSH。</p>
+        <p id="onboarding-tip" class="connection-detail">先启用运行 Agent 的环境。远程 Linux 请点「添加设备」。连接后，按下面的接入指引发起第一个任务。</p>
         <div id="environments" class="list empty">正在检测环境…</div>
+        <details id="agent-guide" class="agent-guide">
+          <summary>首次接入 Agent</summary>
+          <label>任务运行环境 <select id="guide-environment"></select></label>
+          <p id="guide-location"></p>
+          <dl>
+            <dt>Codex CLI</dt><dd>打开 <code>codex</code>，在对话里输入 <code>/hooks</code>。核对带有 <code>vibemate-hook-runner</code> 的命令指向自己的安装目录，再信任新增或已更改的条目。</dd>
+            <dt>GitHub Copilot CLI</dt><dd>重启 <code>copilot</code> 加载 Hook。若首次打开项目时询问是否信任目录，核对当前目录后确认。</dd>
+            <dt>Claude Code</dt><dd>在项目目录重新打开 <code>claude</code>。交互会话首次询问工作区信任时，核对目录后确认。</dd>
+            <dt>Antigravity</dt><dd>新开会话。若未收到任务，在 CLI 的 <code>/hooks</code> 中检查 <code>vibemate-monitor</code> 是否启用。</dd>
+          </dl>
+          <p>发一条任务，展开桌面胶囊，确认列表里出现对应的设备名和任务标题。</p>
+        </details>
         <p id="settings-feedback" class="connection-detail" role="status" aria-live="polite"></p>
       </section>
 
@@ -59,7 +71,7 @@
         </div>
         <label for="ssh-username">登录用户名</label>
         <input id="ssh-username" required maxlength="64" autocomplete="off" placeholder="例如：pi 或 ubuntu">
-        <p class="connection-detail">使用运行 Copilot / Codex 的用户，接收端和 Hook 将安装到该用户目录。</p>
+        <p class="connection-detail">使用平时运行 Agent 的 Linux 用户，接收端和 Hook 将安装到该用户目录。</p>
         <label for="ssh-authentication">登录方式</label>
         <select id="ssh-authentication"><option value="password">用户名和密码</option><option value="key">SSH 私钥文件</option></select>
         <div id="ssh-password-fields">

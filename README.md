@@ -38,6 +38,8 @@ npm run start:desktop
 2. 重新打开该环境里的 Agent 会话，发起一个任务。VibeMate 收到第一个生命周期 Hook 后，任务就会出现在悬浮窗里。
 3. 接入 Linux 或树莓派时，点「添加设备」，填写 SSH 连接信息并测试连接。首次连接核对主机指纹，再点「安装并开始监控」，然后重新打开远端 Agent 会话。
 
+首次接入 Codex CLI 或更换 VibeMate 的安装目录后，在 Codex 对话中输入 `/hooks`。核对 VibeMate Hook 指向自己的安装目录，再信任标为新增或已更改的条目。Codex 会跳过尚未信任的 Hook。复制便携包到另一台电脑时，需在那台电脑上启用监控并完成这一步。[Codex Hook 信任说明](https://developers.openai.com/codex/hooks)
+
 ![环境设置页，展示 Windows 本机、通过 SSH 连接的树莓派、WSL Ubuntu，以及系统通知和悬浮窗模式。](docs/images/settings.png)
 
 *示例中的三套环境分别管理。常驻模式显示运行数量，安静模式在任务运行时缩成小圆点，有提醒时再展开。*
