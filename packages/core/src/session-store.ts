@@ -71,6 +71,12 @@ function compareEvents(left: AgentEvent, right: AgentEvent): number {
 
 function compareEventToState(event: AgentEvent, record: SessionRecord): number {
   const timeDifference = Date.parse(event.occurredAt) - record.stateOccurredAtMs;
+  // Copilot can submit the first prompt before its startup hook arrives.
+  // The startup notification must not put that active turn back to idle.
+  if (event.agent === "copilot") {
+    if (event.event === "sessionStart" && record.lastEventName === "userPromptSubmitted" && record.state === "thinking") return -1;
+    if (!timeDifference && event.event === "userPromptSubmitted" && record.lastEventName === "sessionStart") return 1;
+  }
   return timeDifference || event.eventId.localeCompare(record.stateEventId);
 }
 
@@ -167,8 +173,11 @@ export class SessionStore {
       && (record.problem === "api_failed"
         || (event.problem === "api_failed" && record.consecutiveApiFailures > 0));
 
-    if (terminalTarget) record.terminalTarget = terminalTarget;
-    else delete record.terminalTarget;
+    // Lifecycle hooks report the window without a tab. Keep the prompt's tab for that window.
+    if (!terminalTarget) delete record.terminalTarget;
+    else if (!record.terminalTarget?.startsWith(terminalTarget + ":")) {
+      record.terminalTarget = terminalTarget;
+    }
     record.updatedAt = event.occurredAt;
     record.stateOccurredAtMs = Date.parse(event.occurredAt);
     record.stateEventId = event.eventId;

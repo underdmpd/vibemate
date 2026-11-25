@@ -17,11 +17,33 @@ public static class CodeWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 }
 "@
+function Set-TaskWindowForeground([IntPtr]$handle) {
+    if (![CodeWindow]::IsIconic($handle) -and [CodeWindow]::GetForegroundWindow() -eq $handle) { return 'focused' }
+    if ([CodeWindow]::IsIconic($handle)) { [void][CodeWindow]::ShowWindowAsync($handle, 9) }
+    [void][CodeWindow]::SetForegroundWindow($handle)
+    $elapsed = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        if ([CodeWindow]::GetForegroundWindow() -eq $handle -and ![CodeWindow]::IsIconic($handle)) { return 'focused' }
+        Start-Sleep -Milliseconds 20
+    } while ($elapsed.ElapsedMilliseconds -lt 800)
+    if ([CodeWindow]::GetForegroundWindow() -eq $handle -and ![CodeWindow]::IsIconic($handle)) { 'focused' } else { 'blocked' }
+}
+function Select-TerminalTab([IntPtr]$handle, [int]$index) {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $root = [Windows.Automation.AutomationElement]::FromHandle($handle)
+    $condition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::TabItem)
+    $tabs = $root.FindAll([Windows.Automation.TreeScope]::Descendants, $condition)
+    if ($index -ge $tabs.Count) { return }
+    $selection = $tabs[$index].GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
+    if (!$selection.Current.IsSelected) { $selection.Select() }
+}
 if ($env:VIBEMATE_TERMINAL_TARGET) {
-    if ($env:VIBEMATE_TERMINAL_TARGET -notmatch '^([1-9]\d{0,9}):([1-9]\d{0,9}):([1-9]\d{0,18})$') { 'unmatched'; return }
+    if ($env:VIBEMATE_TERMINAL_TARGET -notmatch '^([1-9]\d{0,9}):([1-9]\d{0,9}):([1-9]\d{0,18})(?::(0|[1-9]\d{0,3}))?$') { 'unmatched'; return }
     $handle = [IntPtr]([long]$Matches[1])
     $expectedOwner = [long]$Matches[2]
     $started = $Matches[3]
+    $tab = $Matches[4]
     [uint32]$owner = 0
     [void][CodeWindow]::GetWindowThreadProcessId($handle, [ref]$owner)
     if ($owner -ne $expectedOwner -or ![CodeWindow]::IsWindowVisible($handle)) { 'unmatched'; return }
@@ -30,9 +52,13 @@ if ($env:VIBEMATE_TERMINAL_TARGET) {
     if ($class.ToString() -ne 'CASCADIA_HOSTING_WINDOW_CLASS') { 'unmatched'; return }
     $terminal = Get-Process -Id $owner -ErrorAction SilentlyContinue
     if (!$terminal -or $terminal.ProcessName -ne 'WindowsTerminal' -or [string]$terminal.StartTime.ToFileTimeUtc() -ne $started) { 'unmatched'; return }
-    if ([CodeWindow]::IsIconic($handle)) { [void][CodeWindow]::ShowWindowAsync($handle, 9) }
-    [void][CodeWindow]::SetForegroundWindow($handle)
-    if ([CodeWindow]::GetForegroundWindow() -eq $handle) { 'focused' } else { 'blocked' }
+    $result = Set-TaskWindowForeground $handle
+    if ($result -eq 'focused' -and $null -ne $tab) {
+        try { Select-TerminalTab $handle ([int]$tab) } catch {
+            # Keep the terminal window focused if the tab is no longer accessible.
+        }
+    }
+    $result
     return
 }
 $codeProcesses = @(Get-Process -Name 'Code','Code - Insiders' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
@@ -62,12 +88,4 @@ if ($windows.Count -gt 1) {
     if ($matchesByProject.Count -ne 1) { 'unmatched'; return }
     $target = $matchesByProject[0]
 }
-if (![CodeWindow]::IsIconic($target.Handle) -and [CodeWindow]::GetForegroundWindow() -eq $target.Handle) { 'focused'; return }
-if ([CodeWindow]::IsIconic($target.Handle)) { [void][CodeWindow]::ShowWindowAsync($target.Handle, 9) }
-[void][CodeWindow]::SetForegroundWindow($target.Handle)
-$elapsed = [Diagnostics.Stopwatch]::StartNew()
-do {
-    if ([CodeWindow]::GetForegroundWindow() -eq $target.Handle -and ![CodeWindow]::IsIconic($target.Handle)) { 'focused'; return }
-    Start-Sleep -Milliseconds 20
-} while ($elapsed.ElapsedMilliseconds -lt 800)
-if ([CodeWindow]::GetForegroundWindow() -eq $target.Handle -and ![CodeWindow]::IsIconic($target.Handle)) { 'focused' } else { 'blocked' }
+Set-TaskWindowForeground $target.Handle

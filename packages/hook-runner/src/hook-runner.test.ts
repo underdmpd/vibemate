@@ -22,7 +22,9 @@ test("Windows Terminal detection preserves VS Code and legacy routes", async () 
   const probe = async () => "123:456:789";
   assert.equal(await windowsTerminalTarget("win32", wt, probe), "123:456:789");
   assert.equal(await windowsTerminalTarget("win32", wt, async () => ""), "unknown");
-  for (const env of [{}, { ...wt, TERM_PROGRAM: "vscode" }, { ...wt, VSCODE_INJECTION: "1" }]) {
+  assert.equal(await windowsTerminalTarget("win32", {}, probe), "123:456:789");
+  assert.equal(await windowsTerminalTarget("win32", {}, async () => ""), undefined);
+  for (const env of [{ ...wt, TERM_PROGRAM: "vscode" }, { ...wt, VSCODE_INJECTION: "1" }]) {
     assert.equal(await windowsTerminalTarget("win32", env, probe), undefined);
   }
   assert.equal(await windowsTerminalTarget("linux", wt, probe), undefined);

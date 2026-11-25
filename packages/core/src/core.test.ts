@@ -34,6 +34,17 @@ test("session store isolates agents with the same raw session id", () => {
   assert.equal(store.list().length, 2);
 });
 
+test("Copilot's startup hook cannot hide the first prompt, including equal timestamps", () => {
+  const prompt = event({ agent: "copilot", eventId: "a", event: "userPromptSubmitted", state: "thinking" });
+  const start = event({ agent: "copilot", eventId: "z", event: "sessionStart", state: "idle" });
+  for (const sequence of [[start, prompt], [prompt, start], [prompt, { ...start, occurredAt: "2026-08-13T12:00:01.000Z" }]]) {
+    const store = new SessionStore();
+    for (const item of sequence) store.apply(item);
+    assert.equal(store.list()[0]?.state, "thinking");
+    assert.equal(store.list()[0]?.recentEvents.length, 2);
+  }
+});
+
 test("event ids are deduplicated inside their session namespace", () => {
   const store = new SessionStore();
   assert.equal(store.apply(event()).result, "applied");
@@ -46,6 +57,18 @@ test("event ids are deduplicated inside their session namespace", () => {
   const snapshots = store.list();
   assert.equal(snapshots.length, 2);
   assert.equal(snapshots.every((snapshot) => snapshot.recentEvents.length === 1), true);
+});
+
+test("completion preserves the prompt tab only for the same terminal window", () => {
+  const store = new SessionStore();
+  store.apply(event({ event: "UserPromptSubmit", state: "thinking" }), "123:456:789:0");
+  const completion = event({
+    eventId: "done", event: "Stop", state: "completed", turnId: "turn-1", occurredAt: "2026-08-13T12:00:01.000Z",
+  });
+  assert.equal(store.apply(completion, "123:456:789").session?.terminalTarget, "123:456:789:0");
+  assert.equal(store.apply(event({
+    eventId: "moved", occurredAt: "2026-08-13T12:00:02.000Z",
+  }), "123:456:790").session?.terminalTarget, "123:456:790");
 });
 
 test("session store ignores duplicate and stale events deterministically", () => {

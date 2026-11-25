@@ -243,7 +243,11 @@ export async function runHook(options: RunHookOptions): Promise<HookRunResult> {
     throw new Error("hook timeout must be a positive integer");
   }
 
-  const terminal = await windowsTerminalTarget();
+  const sessionId = input.sessionId ?? input.session_id;
+  const copilotSession = options.agent === "copilot" && typeof sessionId === "string" ? sessionId : undefined;
+  const captureTab = options.agent === "copilot" && options.eventName === "userPromptSubmitted"
+    || options.agent === "codex" && input.hook_event_name === "UserPromptSubmit";
+  const terminal = await windowsTerminalTarget(process.platform, process.env, undefined, copilotSession, captureTab);
   const response = await (options.fetchImpl ?? fetch)(
     `http://${runtime.host}:${runtime.port}${endpointFor(options.agent, options.eventName)}`,
     {

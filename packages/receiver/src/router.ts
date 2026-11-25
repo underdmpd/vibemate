@@ -30,7 +30,7 @@ export interface ReceiverRouterOptions {
 
 function terminalTarget(request: IncomingMessage): string | undefined {
   const target = request.headers["x-vibemate-terminal"];
-  return typeof target === "string" && /^(?:unknown|[1-9]\d{0,9}:[1-9]\d{0,9}:[1-9]\d{0,18})$/.test(target) ? target : undefined;
+  return typeof target === "string" && /^(?:unknown|[1-9]\d{0,9}:[1-9]\d{0,9}:[1-9]\d{0,18}(?::(?:0|[1-9]\d{0,3}))?)$/.test(target) ? target : undefined;
 }
 
 export class ReceiverRouter {
