@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import type { Client, ClientChannel } from "ssh2";
 import type { SshEnvironment } from "./environment-types.js";
 import type { ReceiverEndpoint } from "./receiver-connection-manager.js";
+import { REMOTE_PAYLOAD_DEPLOY_COMMAND } from "./remote-payload-deploy.js";
 import { openCommand, runCommand, SshConnectionService } from "./ssh-connection.js";
 
 interface Ready { port: number; authToken: string }
@@ -42,8 +43,7 @@ async function receiverReady(channel: ClientChannel): Promise<Ready> {
 }
 
 async function uploadPayload(client: Client, payload: string): Promise<void> {
-  // Windows tar strips POSIX +x bits when archiving NTFS files, so restore execute permission on Linux.
-  const channel = await openCommand(client, 'umask 077; mkdir -p "$HOME/.vibemate" && tar -xf - -C "$HOME/.vibemate" && chmod 700 "$HOME/.vibemate/runtime/node"');
+  const channel = await openCommand(client, REMOTE_PAYLOAD_DEPLOY_COMMAND);
   const archive = spawn("tar", ["-cf", "-", "-C", payload, "."], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   channel.resume(); channel.stderr.resume(); archive.stderr.resume();
   let timeout: NodeJS.Timeout | undefined;
